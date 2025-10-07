@@ -49,6 +49,7 @@ class GameState(Enum):
     PLAYING = 2
     GAME_OVER = 3
     PAUSED = 4
+    LEVEL_COMPLETE = 5
 
 class SoundManager:
     def __init__(self):
@@ -145,7 +146,7 @@ class Player(pygame.sprite.Sprite):
         self.vel_y = 0
         self.on_ground = False
         self.jump_count = 0
-        self.max_jumps = 2
+        self.max_jumps = 1
         
         # Animation
         self.facing_right = True
@@ -235,14 +236,12 @@ class Player(pygame.sprite.Sprite):
         if old_facing != self.facing_right:
             self.draw_character()
             
-        # Jumping
-        if (keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]) and self.jump_count < self.max_jumps:
-            if self.on_ground or self.jump_count == 0:
-                self.vel_y = JUMP_STRENGTH
-                self.jump_count += 1
-                self.on_ground = False
-                if self.sound_manager:
-                    self.sound_manager.play('jump')
+        # Jumping (only when on ground)
+        if (keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]) and self.on_ground:
+            self.vel_y = JUMP_STRENGTH
+            self.on_ground = False
+            if self.sound_manager:
+                self.sound_manager.play('jump')
         
         # Apply gravity
         self.vel_y += GRAVITY
@@ -290,7 +289,8 @@ class Player(pygame.sprite.Sprite):
             # Check if player is jumping on enemy (player's bottom is above enemy's center)
             if self.vel_y > 0 and self.rect.bottom < enemy.rect.centery:
                 enemy.kill()
-                self.vel_y = JUMP_STRENGTH // 2  # Small bounce
+                # Slightly higher bounce on enemy stomp
+                self.vel_y = int(JUMP_STRENGTH * 1.15)
                 if self.sound_manager:
                     self.sound_manager.play('enemy_kill')
                 return "enemy_killed"
@@ -749,6 +749,9 @@ class Game:
         self.lives = 3
         self.score = 0
         self.level_progress = 0  # For progressive difficulty
+        self.current_level = 0
+        self.levels = self.generate_levels()
+        self.theme = self.levels[self.current_level]["theme"]
         
         # Create sprite groups
         self.all_sprites = pygame.sprite.Group()
@@ -761,6 +764,10 @@ class Game:
         # Create camera
         self.camera = Camera()
         
+        # Background cache
+        self._bg_cache = None
+        self._bg_blobs = []
+
         # Create level
         self.create_level()
         
@@ -771,7 +778,42 @@ class Game:
         # Font for UI
         self.font = pygame.font.Font(None, 36)
         
+    def set_level_dimensions(self, width, height):
+        global LEVEL_WIDTH, LEVEL_HEIGHT
+        LEVEL_WIDTH = width
+        LEVEL_HEIGHT = height
+
+    def generate_levels(self):
+        # Define 10 themed levels with growing width/difficulty and distinct colors
+        themes = [
+            {"sky_top": LAVENDER, "sky_bottom": SKY_BLUE, "mountain_back": MOUNTAIN_PURPLE, "mountain_front": MOUNTAIN_BLUE},
+            {"sky_top": SOFT_BLUE, "sky_bottom": SAGE_GREEN, "mountain_back": LIGHT_PURPLE, "mountain_front": SOFT_PURPLE},
+            {"sky_top": PEACH, "sky_bottom": SOFT_YELLOW, "mountain_back": BEIGE, "mountain_front": LIGHT_BROWN},
+            {"sky_top": SOFT_PINK, "sky_bottom": CORAL, "mountain_back": DUSTY_ROSE, "mountain_front": PEACH},
+            {"sky_top": MINT_GREEN, "sky_bottom": PASTEL_GREEN, "mountain_back": SAGE_GREEN, "mountain_front": MINT_GREEN},
+            {"sky_top": LIGHT_PURPLE, "sky_bottom": SOFT_PURPLE, "mountain_back": LAVENDER, "mountain_front": LIGHT_PURPLE},
+            {"sky_top": CREAM, "sky_bottom": SOFT_YELLOW, "mountain_back": PEACH, "mountain_front": CORAL},
+            {"sky_top": SKY_BLUE, "sky_bottom": SOFT_BLUE, "mountain_back": MOUNTAIN_BLUE, "mountain_front": BLACK},
+            {"sky_top": SOFT_YELLOW, "sky_bottom": PEACH, "mountain_back": LIGHT_BROWN, "mountain_front": DUSTY_ROSE},
+            {"sky_top": SOFT_PURPLE, "sky_bottom": LIGHT_PURPLE, "mountain_back": LAVENDER, "mountain_front": MOUNTAIN_BLUE},
+        ]
+        levels = []
+        for i in range(10):
+            width = 2800 + i * 400
+            difficulty = i  # increases with level index
+            levels.append({
+                "width": width,
+                "height": 600,
+                "difficulty": difficulty,
+                "theme": themes[i % len(themes)]
+            })
+        return levels
+
     def create_level(self):
+        # Configure dimensions and theme for current level
+        level_def = self.levels[self.current_level]
+        self.set_level_dimensions(level_def["width"], level_def["height"])
+        self.theme = level_def["theme"]
         # Ground platforms
         for x in range(0, LEVEL_WIDTH, 200):
             platform = Platform(x, LEVEL_HEIGHT - 40, 200, 40)
@@ -779,18 +821,20 @@ class Game:
             self.all_sprites.add(platform)
         
         # Floating platforms with different types
-        platforms_data = [
-            (300, 450, 150, 20, "normal"),
-            (600, 350, 100, 20, "cloud"),
-            (900, 400, 120, 20, "normal"),
-            (1200, 300, 100, 20, "ice"),
-            (1500, 450, 150, 20, "normal"),
-            (1800, 350, 100, 20, "cloud"),
-            (2100, 400, 120, 20, "moving"),
-            (2400, 250, 100, 20, "ice"),
-            (2700, 400, 150, 20, "normal"),
-            (3000, 300, 100, 20, "cloud"),
-        ]
+        # Procedurally create floating platforms based on level width and difficulty
+        platforms_data = []
+        segment = LEVEL_WIDTH // 8
+        rng = random.Random(1337 + self.current_level)
+        for s in range(1, 8):
+            base_x = s * segment
+            count = 1 + (level_def["difficulty"] // 2)
+            for c in range(count):
+                x = base_x - rng.randint(80, 180)
+                y = rng.randint(220, 480)
+                w = rng.choice([100, 120, 150])
+                h = 20
+                ptype = rng.choice(["normal", "cloud", "ice", "moving"]) if s % 2 == 0 else rng.choice(["normal", "cloud", "ice"])
+                platforms_data.append((x, y, w, h, ptype))
         
         for x, y, w, h, ptype in platforms_data:
             platform = Platform(x, y, w, h, ptype)
@@ -798,12 +842,16 @@ class Game:
             self.all_sprites.add(platform)
         
         # Create enemies with progressive difficulty
-        enemy_data = [
-            (400, 400, "basic"), (700, 300, "basic"), (1000, 350, "fast"),
-            (1300, 250, "basic"), (1600, 400, "jumper"), (1900, 300, "fast"),
-            (2200, 350, "big"), (2500, 200, "jumper"), (2800, 350, "fast"),
-            (3100, 250, "big")
-        ]
+        # Enemies scale with difficulty
+        enemy_data = []
+        enemy_kinds = ["basic", "fast", "jumper", "big"]
+        enemy_count = 8 + level_def["difficulty"] * 2
+        rng = random.Random(9000 + self.current_level)
+        for _ in range(enemy_count):
+            x = rng.randint(300, LEVEL_WIDTH - 300)
+            y = rng.randint(240, 460)
+            etype = rng.choices(enemy_kinds, weights=[4, 3 + level_def["difficulty"], 3, 1 + level_def["difficulty"]//2])[0]
+            enemy_data.append((x, y, etype))
         
         # Add more enemies based on level progress
         if self.level_progress > 0:
@@ -824,11 +872,12 @@ class Game:
             self.all_sprites.add(enemy)
         
         # Create powerups
-        powerup_positions = [
-            (500, 400), (800, 300), (1100, 350), (1400, 250),
-            (1700, 400), (2000, 300), (2300, 350), (2600, 200),
-            (2900, 350)
-        ]
+        powerup_positions = []
+        rng = random.Random(777 + self.current_level)
+        for s in range(2, 9):
+            x = s * (LEVEL_WIDTH // 10) + rng.randint(-60, 60)
+            y = rng.randint(260, 420)
+            powerup_positions.append((x, y))
         
         for x, y in powerup_positions:
             powerup = Powerup(x, y)
@@ -836,19 +885,11 @@ class Game:
             self.all_sprites.add(powerup)
         
         # Create decorative plants with more variety
-        plant_data = [
-            # Ground level plants
-            (230, 524, "small"), (330, 524, "flower"), (530, 524, "small"), (730, 524, "flower"),
-            (830, 524, "small"), (1030, 524, "flower"), (1230, 524, "small"), (1430, 524, "flower"),
-            (1630, 524, "small"), (1830, 524, "flower"), (2030, 524, "small"), (2230, 524, "flower"),
-            (2430, 524, "small"), (2630, 524, "flower"), (2830, 524, "small"), (3030, 524, "flower"),
-            # Large trees
-            (130, 506, "large"), (430, 506, "large"), (930, 506, "large"), (1330, 506, "large"),
-            (1730, 506, "large"), (2130, 506, "large"), (2530, 506, "large"), (2930, 506, "large"),
-            # On platforms
-            (320, 414, "small"), (620, 314, "flower"), (920, 364, "small"), (1520, 414, "flower"),
-            (1820, 314, "small"), (2120, 364, "flower"), (2720, 364, "small")
-        ]
+        plant_data = []
+        rng = random.Random(4242 + self.current_level)
+        for x in range(130, LEVEL_WIDTH, 300):
+            plant_type = rng.choice(["small", "large", "flower", "small", "flower"])
+            plant_data.append((x, LEVEL_HEIGHT - 76, plant_type))
         
         for x, y, ptype in plant_data:
             plant = Plant(x, y, ptype)
@@ -856,83 +897,65 @@ class Game:
             self.all_sprites.add(plant)
             
         # Create obstacles
-        obstacle_positions = [
-            (800, 536, "spike"), (1400, 536, "spike"), (2000, 536, "spike"), (2600, 536, "spike")
-        ]
+        obstacle_positions = []
+        rng = random.Random(555 + self.current_level)
+        spike_count = 3 + level_def["difficulty"]
+        for _ in range(spike_count):
+            obstacle_positions.append((rng.randint(600, LEVEL_WIDTH - 400), LEVEL_HEIGHT - 64, "spike"))
         
         for x, y, otype in obstacle_positions:
             obstacle = Obstacle(x, y, otype)
             self.obstacles.add(obstacle)
             self.all_sprites.add(obstacle)
     
+    def _ensure_background_cache(self):
+        if self._bg_cache is None:
+            self._bg_cache = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            top = self.theme["sky_top"]
+            bottom = self.theme["sky_bottom"]
+            for y in range(SCREEN_HEIGHT):
+                t = y / (SCREEN_HEIGHT - 1)
+                r = int(top[0] * (1 - t) + bottom[0] * t)
+                g = int(top[1] * (1 - t) + bottom[1] * t)
+                b = int(top[2] * (1 - t) + bottom[2] * t)
+                pygame.draw.line(self._bg_cache, (r, g, b), (0, y), (SCREEN_WIDTH, y))
+
+            # Create a few slow-moving abstract blobs on their own surface
+            self._bg_blobs = []
+            rng = random.Random(101 + self.current_level)
+            for _ in range(5):
+                blob = {
+                    "x": rng.randint(-100, SCREEN_WIDTH + 100),
+                    "y": rng.randint(40, SCREEN_HEIGHT - 120),
+                    "r": rng.randint(40, 90),
+                    "vx": rng.choice([-0.1, 0.08, 0.12, -0.08]),
+                    "color": (
+                        int((self.theme["sky_top"][0] + self.theme["sky_bottom"][0]) / 2),
+                        int((self.theme["sky_top"][1] + self.theme["sky_bottom"][1]) / 2),
+                        int((self.theme["sky_top"][2] + self.theme["sky_bottom"][2]) / 2),
+                    ),
+                }
+                self._bg_blobs.append(blob)
+
     def draw_background(self):
-        # Always redraw background for proper parallax effect
-        # Sky gradient (improved with smoother transitions)
-        for y in range(0, SCREEN_HEIGHT, 2):  # Draw every 2 pixels for performance
-            color_ratio = y / SCREEN_HEIGHT
-            # Smooth color transition
-            r = int(LAVENDER[0] * (1 - color_ratio) + SKY_BLUE[0] * color_ratio)
-            g = int(LAVENDER[1] * (1 - color_ratio) + SKY_BLUE[1] * color_ratio)
-            b = int(LAVENDER[2] * (1 - color_ratio) + SKY_BLUE[2] * color_ratio)
-            pygame.draw.line(self.screen, (r, g, b), (0, y), (SCREEN_WIDTH, y + 1))
-        
-        # Draw mountains and clouds with proper parallax
-        self.draw_mountains_and_clouds()
+        # Cached gradient background with subtle blobs; no text, no trails
+        self._ensure_background_cache()
+        self.screen.blit(self._bg_cache, (0, 0))
+
+        # Draw and update blobs on a temporary surface to avoid trails
+        blob_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        for blob in self._bg_blobs:
+            pygame.draw.circle(blob_surface, (*blob["color"], 50), (int(blob["x"]), int(blob["y"])), blob["r"])
+            blob["x"] += blob["vx"]
+            if blob["x"] < -120:
+                blob["x"] = SCREEN_WIDTH + 100
+            elif blob["x"] > SCREEN_WIDTH + 120:
+                blob["x"] = -100
+        self.screen.blit(blob_surface, (0, 0))
     
     def draw_mountains_and_clouds(self):
-        
-        # Mountains (parallax effect) - Back layer
-        mountain_offset = self.camera.x * 0.2  # Slower parallax
-        
-        # Back mountains (more distant)
-        back_mountain_points = [
-            (int(-200 - mountain_offset), int(SCREEN_HEIGHT * 0.5)),
-            (int(100 - mountain_offset), int(SCREEN_HEIGHT * 0.35)),
-            (int(300 - mountain_offset), int(SCREEN_HEIGHT * 0.4)),
-            (int(500 - mountain_offset), int(SCREEN_HEIGHT * 0.3)),
-            (int(700 - mountain_offset), int(SCREEN_HEIGHT * 0.35)),
-            (int(900 - mountain_offset), int(SCREEN_HEIGHT * 0.45)),
-            (int(SCREEN_WIDTH + 200 - mountain_offset), int(SCREEN_HEIGHT * 0.45)),
-            (int(SCREEN_WIDTH + 200 - mountain_offset), SCREEN_HEIGHT),
-            (int(-200 - mountain_offset), SCREEN_HEIGHT)
-        ]
-        pygame.draw.polygon(self.screen, MOUNTAIN_PURPLE, back_mountain_points)
-        
-        # Front mountains (closer)
-        mountain_offset2 = self.camera.x * 0.4
-        front_mountain_points = [
-            (int(-100 - mountain_offset2), int(SCREEN_HEIGHT * 0.6)),
-            (int(150 - mountain_offset2), int(SCREEN_HEIGHT * 0.45)),
-            (int(350 - mountain_offset2), int(SCREEN_HEIGHT * 0.5)),
-            (int(550 - mountain_offset2), int(SCREEN_HEIGHT * 0.4)),
-            (int(750 - mountain_offset2), int(SCREEN_HEIGHT * 0.45)),
-            (int(950 - mountain_offset2), int(SCREEN_HEIGHT * 0.55)),
-            (int(SCREEN_WIDTH + 100 - mountain_offset2), int(SCREEN_HEIGHT * 0.55)),
-            (int(SCREEN_WIDTH + 100 - mountain_offset2), SCREEN_HEIGHT),
-            (int(-100 - mountain_offset2), SCREEN_HEIGHT)
-        ]
-        pygame.draw.polygon(self.screen, MOUNTAIN_BLUE, front_mountain_points)
-        
-        # Clouds with better positioning
-        cloud_offset = self.camera.x * 0.05  # Very slow parallax
-        cloud_positions = [
-            (100 - cloud_offset, 60), (350 - cloud_offset, 80), (600 - cloud_offset, 50),
-            (850 - cloud_offset, 90), (1100 - cloud_offset, 70), (1350 - cloud_offset, 85)
-        ]
-        
-        for cx, cy in cloud_positions:
-            # Wrap clouds around screen
-            screen_x = cx % (SCREEN_WIDTH + 200) - 100
-            if -120 < screen_x < SCREEN_WIDTH + 20:  # Only draw visible clouds
-                # Enhanced cloud with better shape
-                # Main cloud body
-                pygame.draw.ellipse(self.screen, WHITE, (int(screen_x), int(cy), 90, 35))
-                # Cloud puffs for more realistic shape
-                pygame.draw.circle(self.screen, WHITE, (int(screen_x + 15), int(cy + 17)), 18)
-                pygame.draw.circle(self.screen, WHITE, (int(screen_x + 45), int(cy + 12)), 22)
-                pygame.draw.circle(self.screen, WHITE, (int(screen_x + 75), int(cy + 17)), 16)
-                # Add subtle shadow
-                pygame.draw.ellipse(self.screen, LAVENDER, (int(screen_x + 2), int(cy + 30), 86, 8))
+        # Intentionally no-op; mountain/cloud layers removed to simplify and avoid artifacts
+        pass
     
     def handle_events(self):
         for event in pygame.event.get():
@@ -942,6 +965,11 @@ class Game:
                 if self.state == GameState.MENU:
                     if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
                         self.start_game()
+                elif self.state == GameState.LEVEL_COMPLETE:
+                    if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
+                        self.continue_to_next_level()
+                    elif event.key == pygame.K_m:
+                        self.state = GameState.MENU
                 elif self.state == GameState.GAME_OVER:
                     if event.key == pygame.K_r or event.key == pygame.K_SPACE:
                         self.restart_game()
@@ -960,6 +988,8 @@ class Game:
         self.lives = 3
         self.score = 0
         self.level_progress = 0
+        self.current_level = 0
+        self.theme = self.levels[self.current_level]["theme"]
         
         # Clear and recreate everything
         self.all_sprites.empty()
@@ -1024,6 +1054,10 @@ class Game:
                 self.lives += 1
                 self.score += 200
             
+            # Detect end of level: when player reaches (or exceeds) level width
+            if self.player.rect.right >= LEVEL_WIDTH - 5:
+                self.state = GameState.LEVEL_COMPLETE
+            
             # Update enemies
             self.enemies.update(self.platforms)
             
@@ -1040,6 +1074,8 @@ class Game:
             self.draw_game()
         elif self.state == GameState.GAME_OVER:
             self.draw_game_over()
+        elif self.state == GameState.LEVEL_COMPLETE:
+            self.draw_level_complete()
         
         pygame.display.flip()
     
@@ -1120,10 +1156,58 @@ class Game:
         # Draw UI
         lives_text = self.font.render(f"Lives: {self.lives}", True, WHITE)
         score_text = self.font.render(f"Score: {self.score}", True, WHITE)
-        level_text = self.font.render(f"Level: {self.level_progress + 1}", True, WHITE)
+        level_text = self.font.render(f"Level: {self.current_level + 1}/{len(self.levels)}", True, WHITE)
         self.screen.blit(lives_text, (10, 10))
         self.screen.blit(score_text, (10, 50))
         self.screen.blit(level_text, (10, 90))
+
+    def draw_level_complete(self):
+        # Background
+        self.draw_background()
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.set_alpha(160)
+        overlay.fill(BLACK)
+        self.screen.blit(overlay, (0, 0))
+
+        title_font = pygame.font.Font(None, 84)
+        title_text = title_font.render(f"Level {self.current_level + 1} Complete!", True, SOFT_YELLOW)
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//3))
+        self.screen.blit(title_text, title_rect)
+
+        info_font = pygame.font.Font(None, 36)
+        if self.current_level < len(self.levels) - 1:
+            info = "Press SPACE/ENTER to Continue"
+        else:
+            info = "All levels complete! Press M for Menu"
+        info_text = info_font.render(info, True, WHITE)
+        info_rect = info_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
+        self.screen.blit(info_text, info_rect)
+
+        small = pygame.font.Font(None, 28)
+        small_text = small.render("Press M for Menu", True, WHITE)
+        small_rect = small_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 50))
+        self.screen.blit(small_text, small_rect)
+
+    def continue_to_next_level(self):
+        if self.current_level < len(self.levels) - 1:
+            self.current_level += 1
+            self.theme = self.levels[self.current_level]["theme"]
+            # Reset and load next level
+            self.all_sprites.empty()
+            self.platforms.empty()
+            self.enemies.empty()
+            self.powerups.empty()
+            self.plants.empty()
+            self.obstacles.empty()
+            self.create_level()
+            self.player = Player(100, 400, self.sound_manager)
+            self.all_sprites.add(self.player)
+            self.camera.x = 0
+            self.camera.y = 0
+            self.state = GameState.PLAYING
+        else:
+            # Finished all levels
+            self.state = GameState.MENU
     
     def draw_game_over(self):
         # Draw scenic background
@@ -1192,6 +1276,7 @@ class Game:
         self.state = GameState.PLAYING
         self.lives = 3
         self.score = 0
+        self.current_level = 0
         
         # Clear all sprites
         self.all_sprites.empty()
@@ -1202,6 +1287,7 @@ class Game:
         self.obstacles.empty()
         
         # Recreate level and player
+        self.theme = self.levels[self.current_level]["theme"]
         self.create_level()
         self.player = Player(100, 400, self.sound_manager)
         self.all_sprites.add(self.player)
