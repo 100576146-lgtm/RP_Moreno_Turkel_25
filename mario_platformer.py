@@ -50,6 +50,7 @@ class GameState(Enum):
     GAME_OVER = 3
     PAUSED = 4
     LEVEL_COMPLETE = 5
+    LEVEL_SELECT = 6
 
 class SoundManager:
     def __init__(self):
@@ -73,14 +74,12 @@ class SoundManager:
     def create_sound_effects(self):
         """Create simple sound effects using basic waveforms"""
         try:
-            # Create simple placeholder sounds with different frequencies
-            # These will be very quiet and simple
-            
             # Create basic sounds using simple buffers
-            self.sounds['coin'] = self.create_simple_sound(800, 0.1)
-            self.sounds['enemy_kill'] = self.create_simple_sound(400, 0.15)
-            self.sounds['jump'] = self.create_simple_sound(600, 0.08)
-            self.sounds['hit'] = self.create_simple_sound(200, 0.2)
+            self.sounds['coin'] = self.create_simple_sound(880, 0.1)
+            self.sounds['bark'] = self.create_bark_sound()
+            self.sounds['enemy_kill'] = self.sounds['bark']
+            self.sounds['jump'] = self.create_simple_sound(700, 0.09)
+            self.sounds['hit'] = self.create_simple_sound(180, 0.18)
             
             # Set volumes
             for sound in self.sounds.values():
@@ -105,7 +104,7 @@ class SoundManager:
                 # Simple sine wave with envelope
                 wave = math.sin(2 * math.pi * frequency * t)
                 envelope = max(0, 1 - (i / frames))  # Fade out
-                sample = int(wave * envelope * 8000)  # Very quiet
+                sample = int(wave * envelope * 12000)
                 # Convert to bytes (16-bit signed)
                 wave_data.extend([sample & 0xFF, (sample >> 8) & 0xFF])
             
@@ -117,6 +116,37 @@ class SoundManager:
             print(f"Could not create simple sound: {e}")
             # Return silent sound
             return pygame.mixer.Sound(buffer=b'\x00\x00' * 1000)
+
+    def create_bark_sound(self):
+        """Create a cartoony bark from basic waveforms."""
+        try:
+            sample_rate = 22050
+            import math
+            data = []
+            # Two short pulses with descending pitch
+            for base_freq, dur in [(550, 0.06), (450, 0.08)]:
+                frames = int(dur * sample_rate)
+                for i in range(frames):
+                    t = float(i) / sample_rate
+                    freq = base_freq * (1 - 0.6 * (i / frames))
+                    wave = math.sin(2 * math.pi * freq * t)
+                    square = 1.0 if wave >= 0 else -1.0
+                    mixed = 0.6 * wave + 0.4 * square
+                    # Envelope
+                    env = 1.0
+                    if i < frames * 0.1:
+                        env = i / (frames * 0.1)
+                    elif i > frames * 0.85:
+                        env = max(0, 1 - (i - frames * 0.85) / (frames * 0.15))
+                    sample = int(max(-1, min(1, mixed * env)) * 12000)
+                    data.extend([sample & 0xFF, (sample >> 8) & 0xFF])
+                # small gap
+                gap = [0, 0] * int(0.02 * sample_rate)
+                data.extend(gap)
+            return pygame.mixer.Sound(buffer=bytes(data))
+        except Exception as e:
+            print(f"Could not create bark sound: {e}")
+            return self.create_simple_sound(500, 0.1)
     
     
     def set_volume(self, volume):
@@ -158,64 +188,39 @@ class Player(pygame.sprite.Sprite):
         self.draw_character()
     
     def draw_character(self):
-        self.image.fill((0, 0, 0, 0))  # Clear with transparency
-        
-        # Body (soft purple rounded rectangle)
-        pygame.draw.ellipse(self.image, SOFT_PURPLE, (4, 12, 24, 32))
-        pygame.draw.ellipse(self.image, DUSTY_ROSE, (4, 12, 24, 32), 2)
-        
-        # Head (soft purple circle)
-        pygame.draw.circle(self.image, SOFT_PURPLE, (16, 16), 12)
-        pygame.draw.circle(self.image, DUSTY_ROSE, (16, 16), 12, 2)
-        
-        # Animal ears (triangular)
+        self.image.fill((0, 0, 0, 0))
+        # Purple dog design
+        body_color = SOFT_PURPLE
+        outline = DUSTY_ROSE
+        # Torso
+        pygame.draw.ellipse(self.image, body_color, (4, 18, 24, 26))
+        pygame.draw.ellipse(self.image, outline, (4, 18, 24, 26), 2)
+        # Head
+        pygame.draw.ellipse(self.image, body_color, (6, 4, 22, 18))
+        pygame.draw.ellipse(self.image, outline, (6, 4, 22, 18), 2)
+        # Floppy ears
+        pygame.draw.ellipse(self.image, LIGHT_PURPLE, (3, 6, 8, 12))
+        pygame.draw.ellipse(self.image, LIGHT_PURPLE, (23, 6, 8, 12))
+        # Snout and nose
+        snout_x = 18 if self.facing_right else 10
+        pygame.draw.ellipse(self.image, LIGHT_PURPLE, (snout_x, 10, 8, 6))
+        pygame.draw.circle(self.image, SOFT_PINK, (snout_x + (6 if self.facing_right else 2), 13), 2)
+        # Eyes
         if self.facing_right:
-            # Right-facing ears
-            pygame.draw.polygon(self.image, LIGHT_PURPLE, [(8, 8), (12, 4), (16, 8)])
-            pygame.draw.polygon(self.image, SOFT_PINK, [(9, 7), (12, 5), (15, 7)])
-            pygame.draw.polygon(self.image, LIGHT_PURPLE, [(16, 8), (20, 4), (24, 8)])
-            pygame.draw.polygon(self.image, SOFT_PINK, [(17, 7), (20, 5), (23, 7)])
+            pygame.draw.circle(self.image, WHITE, (14, 10), 3)
+            pygame.draw.circle(self.image, WHITE, (20, 10), 3)
+            pygame.draw.circle(self.image, BLACK, (14, 10), 1)
+            pygame.draw.circle(self.image, BLACK, (20, 10), 1)
         else:
-            # Left-facing ears
-            pygame.draw.polygon(self.image, LIGHT_PURPLE, [(8, 8), (12, 4), (16, 8)])
-            pygame.draw.polygon(self.image, SOFT_PINK, [(9, 7), (12, 5), (15, 7)])
-            pygame.draw.polygon(self.image, LIGHT_PURPLE, [(16, 8), (20, 4), (24, 8)])
-            pygame.draw.polygon(self.image, SOFT_PINK, [(17, 7), (20, 5), (23, 7)])
-        
-        # Eyes (larger and more expressive)
-        if self.facing_right:
-            # Right-facing eyes
-            pygame.draw.circle(self.image, WHITE, (12, 12), 4)
-            pygame.draw.circle(self.image, WHITE, (20, 12), 4)
-            pygame.draw.circle(self.image, BLACK, (14, 12), 2)
-            pygame.draw.circle(self.image, BLACK, (22, 12), 2)
-            # Eye shine
-            pygame.draw.circle(self.image, WHITE, (15, 11), 1)
-            pygame.draw.circle(self.image, WHITE, (23, 11), 1)
-        else:
-            # Left-facing eyes
-            pygame.draw.circle(self.image, WHITE, (12, 12), 4)
-            pygame.draw.circle(self.image, WHITE, (20, 12), 4)
-            pygame.draw.circle(self.image, BLACK, (10, 12), 2)
-            pygame.draw.circle(self.image, BLACK, (18, 12), 2)
-            # Eye shine
-            pygame.draw.circle(self.image, WHITE, (9, 11), 1)
-            pygame.draw.circle(self.image, WHITE, (17, 11), 1)
-        
-        # Nose (small pink triangle)
-        pygame.draw.polygon(self.image, SOFT_PINK, [(16, 16), (14, 18), (18, 18)])
-        
-        # Mouth (small smile)
-        pygame.draw.arc(self.image, BLACK, (12, 18, 8, 4), 0, 3.14159, 2)
-        
-        # Arms (more rounded)
-        pygame.draw.circle(self.image, LIGHT_PURPLE, (2, 20), 4)
-        pygame.draw.circle(self.image, LIGHT_PURPLE, (30, 20), 4)
-        
-        # Feet (more paw-like)
+            pygame.draw.circle(self.image, WHITE, (12, 10), 3)
+            pygame.draw.circle(self.image, WHITE, (18, 10), 3)
+            pygame.draw.circle(self.image, BLACK, (12, 10), 1)
+            pygame.draw.circle(self.image, BLACK, (18, 10), 1)
+        # Tail
+        pygame.draw.arc(self.image, LIGHT_PURPLE, (0, 22, 14, 16), 1.5, 3.0, 3)
+        # Paws
         pygame.draw.ellipse(self.image, DUSTY_ROSE, (6, 42, 8, 6))
         pygame.draw.ellipse(self.image, DUSTY_ROSE, (18, 42, 8, 6))
-        # Paw pads
         pygame.draw.circle(self.image, SOFT_PINK, (10, 44), 1)
         pygame.draw.circle(self.image, SOFT_PINK, (22, 44), 1)
         
@@ -777,6 +782,61 @@ class Game:
         
         # Font for UI
         self.font = pygame.font.Font(None, 36)
+        self.font_small = pygame.font.Font(None, 28)
+
+    def draw_heart(self, cx, cy, r, color_fill, color_outline):
+        # Draw a heart centered at (cx, cy)
+        pygame.draw.circle(self.screen, color_fill, (cx - r//2, cy - r//4), r//2)
+        pygame.draw.circle(self.screen, color_fill, (cx + r//2, cy - r//4), r//2)
+        pygame.draw.polygon(self.screen, color_fill, [(cx - r, cy - r//4), (cx + r, cy - r//4), (cx, cy + r)])
+        pygame.draw.circle(self.screen, color_outline, (cx - r//2, cy - r//4), r//2, 2)
+        pygame.draw.circle(self.screen, color_outline, (cx + r//2, cy - r//4), r//2, 2)
+        pygame.draw.polygon(self.screen, color_outline, [(cx - r, cy - r//4), (cx + r, cy - r//4), (cx, cy + r)], 2)
+
+    def draw_bubble_text(self, text, x, y, center=False, size=36):
+        font = pygame.font.Font(None, size)
+        rainbow = [SOFT_PINK, MINT_GREEN, SOFT_YELLOW, PEACH, LIGHT_PURPLE, SKY_BLUE]
+        # Render per-character with outline and rainbow fill
+        surfaces = []
+        for idx, ch in enumerate(text):
+            color = rainbow[idx % len(rainbow)]
+            core = font.render(ch, True, color)
+            outline = font.render(ch, True, BLACK)
+            w, h = core.get_size()
+            char_surf = pygame.Surface((w + 6, h + 6), pygame.SRCALPHA)
+            for dx in (-2, -1, 0, 1, 2):
+                for dy in (-2, -1, 0, 1, 2):
+                    if dx == 0 and dy == 0:
+                        continue
+                    char_surf.blit(outline, (dx + 3, dy + 3))
+            char_surf.blit(core, (3, 3))
+            surfaces.append(char_surf)
+        total_w = sum(s.get_width() for s in surfaces)
+        max_h = max((s.get_height() for s in surfaces), default=0)
+        start_x = x - total_w // 2 if center else x
+        cur_x = start_x
+        for s in surfaces:
+            self.screen.blit(s, (cur_x, y - max_h // 2))
+            cur_x += s.get_width()
+
+    def draw_level_select(self):
+        self.draw_background()
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.set_alpha(96)
+        overlay.fill(BLACK)
+        self.screen.blit(overlay, (0, 0))
+
+        self.draw_bubble_text("Select Level", SCREEN_WIDTH//2, 90, center=True, size=72)
+        top = 160
+        for i, level in enumerate(self.levels):
+            name = f"{i+1}. {level['theme'].get('name', 'Level')}"
+            y = top + i * 36
+            if i == self.current_level:
+                bar = pygame.Rect(SCREEN_WIDTH//2 - 180, y - 16, 360, 32)
+                pygame.draw.rect(self.screen, MINT_GREEN, bar)
+                pygame.draw.rect(self.screen, BLACK, bar, 2)
+            self.draw_bubble_text(name, SCREEN_WIDTH//2, y, center=True, size=28)
+        self.draw_bubble_text("UP/DOWN to choose, ENTER to play, M for menu", SCREEN_WIDTH//2, SCREEN_HEIGHT - 60, center=True, size=24)
         
     def set_level_dimensions(self, width, height):
         global LEVEL_WIDTH, LEVEL_HEIGHT
@@ -784,18 +844,18 @@ class Game:
         LEVEL_HEIGHT = height
 
     def generate_levels(self):
-        # Define 10 themed levels with growing width/difficulty and distinct colors
+        # Define 10 themed levels with names and color themes
         themes = [
-            {"sky_top": LAVENDER, "sky_bottom": SKY_BLUE, "mountain_back": MOUNTAIN_PURPLE, "mountain_front": MOUNTAIN_BLUE},
-            {"sky_top": SOFT_BLUE, "sky_bottom": SAGE_GREEN, "mountain_back": LIGHT_PURPLE, "mountain_front": SOFT_PURPLE},
-            {"sky_top": PEACH, "sky_bottom": SOFT_YELLOW, "mountain_back": BEIGE, "mountain_front": LIGHT_BROWN},
-            {"sky_top": SOFT_PINK, "sky_bottom": CORAL, "mountain_back": DUSTY_ROSE, "mountain_front": PEACH},
-            {"sky_top": MINT_GREEN, "sky_bottom": PASTEL_GREEN, "mountain_back": SAGE_GREEN, "mountain_front": MINT_GREEN},
-            {"sky_top": LIGHT_PURPLE, "sky_bottom": SOFT_PURPLE, "mountain_back": LAVENDER, "mountain_front": LIGHT_PURPLE},
-            {"sky_top": CREAM, "sky_bottom": SOFT_YELLOW, "mountain_back": PEACH, "mountain_front": CORAL},
-            {"sky_top": SKY_BLUE, "sky_bottom": SOFT_BLUE, "mountain_back": MOUNTAIN_BLUE, "mountain_front": BLACK},
-            {"sky_top": SOFT_YELLOW, "sky_bottom": PEACH, "mountain_back": LIGHT_BROWN, "mountain_front": DUSTY_ROSE},
-            {"sky_top": SOFT_PURPLE, "sky_bottom": LIGHT_PURPLE, "mountain_back": LAVENDER, "mountain_front": MOUNTAIN_BLUE},
+            {"name": "Meadow", "sky_top": LAVENDER, "sky_bottom": SKY_BLUE},
+            {"name": "Ice", "sky_top": SOFT_BLUE, "sky_bottom": LAVENDER},
+            {"name": "Fire", "sky_top": PEACH, "sky_bottom": CORAL},
+            {"name": "Forest", "sky_top": MINT_GREEN, "sky_bottom": PASTEL_GREEN},
+            {"name": "Underwater", "sky_top": SOFT_BLUE, "sky_bottom": SKY_BLUE},
+            {"name": "Desert", "sky_top": CREAM, "sky_bottom": SOFT_YELLOW},
+            {"name": "Night", "sky_top": LIGHT_PURPLE, "sky_bottom": SOFT_PURPLE},
+            {"name": "Volcano", "sky_top": CORAL, "sky_bottom": DUSTY_ROSE},
+            {"name": "Sky", "sky_top": SKY_BLUE, "sky_bottom": SOFT_BLUE},
+            {"name": "Neon", "sky_top": SOFT_PINK, "sky_bottom": LIGHT_PURPLE},
         ]
         levels = []
         for i in range(10):
@@ -814,6 +874,8 @@ class Game:
         level_def = self.levels[self.current_level]
         self.set_level_dimensions(level_def["width"], level_def["height"])
         self.theme = level_def["theme"]
+        # Reset background cache for new theme
+        self._bg_cache = None
         # Ground platforms
         for x in range(0, LEVEL_WIDTH, 200):
             platform = Platform(x, LEVEL_HEIGHT - 40, 200, 40)
@@ -965,10 +1027,21 @@ class Game:
                 if self.state == GameState.MENU:
                     if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
                         self.start_game()
+                    elif event.key == pygame.K_l:
+                        self.state = GameState.LEVEL_SELECT
                 elif self.state == GameState.LEVEL_COMPLETE:
                     if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
                         self.continue_to_next_level()
                     elif event.key == pygame.K_m:
+                        self.state = GameState.MENU
+                elif self.state == GameState.LEVEL_SELECT:
+                    if event.key == pygame.K_UP:
+                        self.current_level = (self.current_level - 1) % len(self.levels)
+                    elif event.key == pygame.K_DOWN:
+                        self.current_level = (self.current_level + 1) % len(self.levels)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        self.start_game()
+                    elif event.key == pygame.K_m or event.key == pygame.K_ESCAPE:
                         self.state = GameState.MENU
                 elif self.state == GameState.GAME_OVER:
                     if event.key == pygame.K_r or event.key == pygame.K_SPACE:
@@ -1076,6 +1149,8 @@ class Game:
             self.draw_game_over()
         elif self.state == GameState.LEVEL_COMPLETE:
             self.draw_level_complete()
+        elif self.state == GameState.LEVEL_SELECT:
+            self.draw_level_select()
         
         pygame.display.flip()
     
@@ -1089,31 +1164,17 @@ class Game:
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
         
-        # Title with shadow effect
-        title_font = pygame.font.Font(None, 84)
-        
-        # Shadow
-        shadow_text = title_font.render("Animal Platformer", True, BLACK)
-        shadow_rect = shadow_text.get_rect(center=(SCREEN_WIDTH//2 + 3, SCREEN_HEIGHT//4 + 3))
-        self.screen.blit(shadow_text, shadow_rect)
-        
-        # Main title
-        title_text = title_font.render("Animal Platformer", True, SOFT_PURPLE)
-        title_rect = title_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//4))
-        self.screen.blit(title_text, title_rect)
+        # Title bubble text
+        self.draw_bubble_text("Puppy Platformer", SCREEN_WIDTH//2, SCREEN_HEIGHT//4, center=True, size=84)
         
         # Subtitle
-        subtitle_font = pygame.font.Font(None, 36)
-        subtitle_text = subtitle_font.render("A Mario-inspired Adventure", True, LIGHT_PURPLE)
-        subtitle_rect = subtitle_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//4 + 60))
-        self.screen.blit(subtitle_text, subtitle_rect)
+        self.draw_bubble_text("A Bubblegum Adventure", SCREEN_WIDTH//2, SCREEN_HEIGHT//4 + 60, center=True, size=36)
         
         # Instructions with button styling
-        instruction_font = pygame.font.Font(None, 32)
         instructions = [
-            ("Press SPACE or ENTER to Start", MINT_GREEN),
-            ("Arrow Keys or WASD to Move", SOFT_YELLOW),
-            ("SPACE to Jump", PEACH),
+            ("Press SPACE/ENTER to Start", MINT_GREEN),
+            ("Press L for Level Select", SOFT_YELLOW),
+            ("Arrows/WASD to Move, SPACE to Jump", PEACH),
             ("ESC to Quit", CORAL)
         ]
         
@@ -1128,16 +1189,11 @@ class Game:
             pygame.draw.rect(self.screen, color, button_rect)
             pygame.draw.rect(self.screen, BLACK, button_rect, 2)
             
-            # Text
-            text = instruction_font.render(instruction, True, BLACK)
-            text_rect = text.get_rect(center=button_rect.center)
-            self.screen.blit(text, text_rect)
+            # Bubble small text
+            self.draw_bubble_text(instruction, button_rect.centerx, button_rect.centery - 2, center=True, size=28)
         
         # Add volume control hint
-        volume_font = pygame.font.Font(None, 24)
-        volume_text = volume_font.render("Sound effects enabled", True, WHITE)
-        volume_rect = volume_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT - 30))
-        self.screen.blit(volume_text, volume_rect)
+        self.draw_bubble_text("Sound effects enabled", SCREEN_WIDTH//2, SCREEN_HEIGHT - 30, center=True, size=24)
     
     def draw_game(self):
         # Draw scenic background
@@ -1153,13 +1209,14 @@ class Game:
                 -sprite.rect.height < screen_y < SCREEN_HEIGHT):
                 self.screen.blit(sprite.image, (screen_x, screen_y))
         
-        # Draw UI
-        lives_text = self.font.render(f"Lives: {self.lives}", True, WHITE)
-        score_text = self.font.render(f"Score: {self.score}", True, WHITE)
-        level_text = self.font.render(f"Level: {self.current_level + 1}/{len(self.levels)}", True, WHITE)
-        self.screen.blit(lives_text, (10, 10))
-        self.screen.blit(score_text, (10, 50))
-        self.screen.blit(level_text, (10, 90))
+        # HUD: hearts and bold score panel
+        for i in range(self.lives):
+            self.draw_heart(14 + i * 28, 18, 10, SOFT_PINK, DUSTY_ROSE)
+        panel_rect = pygame.Rect(10, 44, 200, 40)
+        pygame.draw.rect(self.screen, SOFT_YELLOW, panel_rect)
+        pygame.draw.rect(self.screen, BLACK, panel_rect, 2)
+        self.draw_bubble_text(f"Score: {self.score}", panel_rect.left + 10, panel_rect.centery, center=False, size=28)
+        self.draw_bubble_text(f"Level: {self.current_level + 1}/{len(self.levels)}", 10, 94, center=False, size=28)
 
     def draw_level_complete(self):
         # Background
@@ -1169,24 +1226,15 @@ class Game:
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
 
-        title_font = pygame.font.Font(None, 84)
-        title_text = title_font.render(f"Level {self.current_level + 1} Complete!", True, SOFT_YELLOW)
-        title_rect = title_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//3))
-        self.screen.blit(title_text, title_rect)
+        self.draw_bubble_text(f"Level {self.current_level + 1} Complete!", SCREEN_WIDTH//2, SCREEN_HEIGHT//3, center=True, size=84)
 
-        info_font = pygame.font.Font(None, 36)
         if self.current_level < len(self.levels) - 1:
             info = "Press SPACE/ENTER to Continue"
         else:
             info = "All levels complete! Press M for Menu"
-        info_text = info_font.render(info, True, WHITE)
-        info_rect = info_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
-        self.screen.blit(info_text, info_rect)
+        self.draw_bubble_text(info, SCREEN_WIDTH//2, SCREEN_HEIGHT//2, center=True, size=36)
 
-        small = pygame.font.Font(None, 28)
-        small_text = small.render("Press M for Menu", True, WHITE)
-        small_rect = small_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 50))
-        self.screen.blit(small_text, small_rect)
+        self.draw_bubble_text("Press M for Menu", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 50, center=True, size=28)
 
     def continue_to_next_level(self):
         if self.current_level < len(self.levels) - 1:
@@ -1219,35 +1267,19 @@ class Game:
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
         
-        # Game Over title with shadow effect
-        game_over_font = pygame.font.Font(None, 84)
-        
-        # Shadow
-        shadow_text = game_over_font.render("GAME OVER", True, BLACK)
-        shadow_rect = shadow_text.get_rect(center=(SCREEN_WIDTH//2 + 3, SCREEN_HEIGHT//3 + 3))
-        self.screen.blit(shadow_text, shadow_rect)
-        
-        # Main text
-        game_over_text = game_over_font.render("GAME OVER", True, CORAL)
-        game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//3))
-        self.screen.blit(game_over_text, game_over_rect)
+        # Game Over title bubble
+        self.draw_bubble_text("GAME OVER", SCREEN_WIDTH//2, SCREEN_HEIGHT//3, center=True, size=84)
         
         # Stats panel background
         panel_rect = pygame.Rect(SCREEN_WIDTH//2 - 200, SCREEN_HEIGHT//2 - 60, 400, 120)
         pygame.draw.rect(self.screen, LIGHT_PURPLE, panel_rect)
         pygame.draw.rect(self.screen, DUSTY_ROSE, panel_rect, 3)
         
-        # Final score with better formatting
-        score_font = pygame.font.Font(None, 52)
-        final_score_text = score_font.render(f"Final Score: {self.score}", True, BLACK)
-        score_rect = final_score_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 20))
-        self.screen.blit(final_score_text, score_rect)
+        # Final score
+        self.draw_bubble_text(f"Final Score: {self.score}", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 20, center=True, size=52)
         
         # Level reached
-        level_font = pygame.font.Font(None, 36)
-        level_text = level_font.render(f"Level Reached: {self.level_progress + 1}", True, BLACK)
-        level_rect = level_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 20))
-        self.screen.blit(level_text, level_rect)
+        self.draw_bubble_text(f"Level Reached: {self.level_progress + 1}", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 20, center=True, size=36)
         
         # Instructions with better styling
         instruction_font = pygame.font.Font(None, 32)
@@ -1267,10 +1299,7 @@ class Game:
             pygame.draw.rect(self.screen, color, button_rect)
             pygame.draw.rect(self.screen, BLACK, button_rect, 2)
             
-            # Text
-            text = instruction_font.render(instruction, True, BLACK)
-            text_rect = text.get_rect(center=button_rect.center)
-            self.screen.blit(text, text_rect)
+            self.draw_bubble_text(instruction, button_rect.centerx, button_rect.centery - 2, center=True, size=28)
     
     def restart_game(self):
         self.state = GameState.PLAYING
@@ -1308,5 +1337,6 @@ class Game:
         sys.exit()
 
 if __name__ == "__main__":
-    game = Game()
-    game.run()
+    # Delegate to modular entry point
+    from game import run_game
+    run_game()
