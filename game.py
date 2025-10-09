@@ -106,6 +106,51 @@ class Game:
             self.obstacles.add(obstacle)
             self.all_sprites.add(obstacle)
 
+        # THEMED QUIRKS & OBSTACLES FOR EACH LEVEL
+        quirks = self.theme.get("quirks", "")
+        if "lava_cheese" in quirks:
+            # Spawn large yellow-orange pools with burn damage spikes
+            for lx in range(400, level_def["width"], 900):
+                from entities import Obstacle
+                for dx in range(0,200,40):
+                    obs = Obstacle(lx+dx, level_def["height"]-52, obstacle_type="spike")
+                    self.obstacles.add(obs); self.all_sprites.add(obs)
+                # Additional cheese melty platform above
+                platform = Platform(lx+50, level_def["height"]-120, 140, 26, platform_type="cheese_lava", theme=self.theme)
+                self.platforms.add(platform); self.all_sprites.add(platform)
+        if "slippery_platforms" in quirks:
+            for plat in self.platforms:
+                plat.platform_type = "ice" if plat.platform_type == "normal" else plat.platform_type
+        if "molten_metal" in quirks:
+            # Place metallic pools (damage obstacles) throughout
+            for mx in range(600, level_def["width"], 1100):
+                obs = Obstacle(mx+30, level_def["height"]-54, obstacle_type="spike")
+                self.obstacles.add(obs); self.all_sprites.add(obs)
+        if "dash_boosts" in quirks:
+            # TODO: Add dash boost pads for ice speedrun
+            pass
+        if "ghost_platforms" in quirks or "appear_when_not_looking" in quirks:
+            # TODO: Tag some platforms as ghost (only visible when not looked at). Needs player direction logic.
+            pass
+        if "disappearing_platforms" in quirks or "fake_floors" in quirks or "glitchy_enemies" in quirks:
+            # TODO: Add platforms that flicker or disappear, and flicker some enemies.
+            pass
+        if "swing_ropes" in quirks:
+            # Add swinging platforms (simulating spaghetti ropes)
+            for sx in range(750, level_def["width"], 1200):
+                platform = Platform(sx, 280, 60, 16, platform_type="spaghetti", theme=self.theme)
+                self.platforms.add(platform); self.all_sprites.add(platform)
+                # TODO: Add physics for swinging motion effect
+        if "machines_vs_plants" in quirks or "moving_barriers" in quirks:
+            # TODO: Add moving/obstructing platforms in jungle
+            pass
+        if "tentacle_attacks" in quirks:
+            # Place tentacle obstacles at certain spots
+            for tx in range(1200, level_def["width"], 1500):
+                obs = Obstacle(tx, level_def["height"]-68, obstacle_type="spike") # TODO: Replace with tentacle sprite and attack logic
+                self.obstacles.add(obs); self.all_sprites.add(obs)
+        # For all themes, add corresponding dangers and platform visuals as above
+
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -287,11 +332,13 @@ class Game:
                 self.screen.blit(sprite.image, (screen_x, screen_y))
         for i in range(self.lives):
             self.ui.draw_heart(self.screen, 14 + i * 28, 18, 10, SOFT_PINK, BLACK)
-        panel_rect = pygame.Rect(10, 44, 200, 40)
+        # In the HUD panel:
+        panel_rect = pygame.Rect(10, 44, 320, 40)
         pygame.draw.rect(self.screen, SOFT_YELLOW, panel_rect)
         pygame.draw.rect(self.screen, BLACK, panel_rect, 2)
         self.ui.draw_bubble_text(self.screen, f"Score: {self.score}", panel_rect.left + 10, panel_rect.centery, center=False, size=28)
-        self.ui.draw_bubble_text(self.screen, f"Level: {self.current_level + 1}/{len(self.levels)}", 10, 94, center=False, size=28)
+        lvl_name = self.levels[self.current_level]["theme"].get("name", "Level")
+        self.ui.draw_bubble_text(self.screen, f"{lvl_name} ({self.current_level + 1}/{len(self.levels)})", 10, 94, center=False, size=28)
 
     def _draw_level_complete(self):
         self.bg.draw(self.screen, self.current_level)
@@ -299,7 +346,9 @@ class Game:
         overlay.set_alpha(160)
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
-        self.ui.draw_bubble_text(self.screen, f"Level {self.current_level + 1} Complete!", SCREEN_WIDTH//2, SCREEN_HEIGHT//3, center=True, size=84)
+        # On level complete screen:
+        lvl_name = self.levels[self.current_level]["theme"].get("name", "Level")
+        self.ui.draw_bubble_text(self.screen, f"{lvl_name} Complete!", SCREEN_WIDTH//2, SCREEN_HEIGHT//3, center=True, size=84)
         info = "Press SPACE/ENTER to Continue" if self.current_level < len(self.levels) - 1 else "All levels complete! Press M for Menu"
         self.ui.draw_bubble_text(self.screen, info, SCREEN_WIDTH//2, SCREEN_HEIGHT//2, center=True, size=36)
         self.ui.draw_bubble_text(self.screen, "Press M for Menu", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 50, center=True, size=28)

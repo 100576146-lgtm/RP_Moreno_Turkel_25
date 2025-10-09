@@ -118,5 +118,80 @@ class Background:
                     col = (90,150,100)
                     pygame.draw.line(screen, col, (x,y0), (x+random.randint(-6,6),y0+18), width)
                     x += random.randint(-6,7); y0+=18
+        elif motif == 'fondue_smoke':
+            # Wispy yellowish plumes drifting up
+            for _ in range(7):
+                x = random.randint(30, SCREEN_WIDTH-30)
+                y = SCREEN_HEIGHT - 120 - random.randint(0,80)
+                for o in range(3):
+                    pygame.draw.ellipse(screen, (255,255,188-o*32), (x-10-o*8, y-12-o*6, 40+o*14, 14+o*8), 0)
+        elif motif == 'moss_spores':
+            # Green/yellow dots floating everywhere
+            for _ in range(36):
+                x = random.randint(0,SCREEN_WIDTH)
+                y = random.randint(0,SCREEN_HEIGHT-10)
+                c = random.choice([(182,220,140),(220,255,184),(140,200,120)])
+                pygame.draw.circle(screen, c, (x,y), 2)
+        elif motif == 'sparks':
+            # Bright short lines in metal world
+            for _ in range(20):
+                x = random.randint(0,SCREEN_WIDTH)
+                y = random.randint(40,SCREEN_HEIGHT-40)
+                length = random.randint(8,18)
+                color = random.choice([(250,230,50),(230,200,160),(190,160,255)])
+                pygame.draw.line(screen, color, (x,y), (x+random.randint(-length,length), y+random.randint(-3,3)), 3)
+        elif motif == 'snow_blur':
+            # Cloudy streaks for icy speed
+            for _ in range(8):
+                x = random.randint(0,SCREEN_WIDTH-80)
+                y = random.randint(20,130)
+                pygame.draw.ellipse(screen, (240, 240, 255, 88), (x, y, 80, random.randint(17,30)))
+            for _ in range(22):
+                x = random.randint(0,SCREEN_WIDTH)
+                y = random.randint(0,SCREEN_HEIGHT-10)
+                pygame.draw.circle(screen, (255,255,255,60), (x,y), random.randint(0,3))
+        elif motif == 'haunt_fog':
+            # Misty purple/gray overlays, drifting
+            for _ in range(10):
+                x = random.randint(0,SCREEN_WIDTH-10)
+                y = random.randint(0,SCREEN_HEIGHT-10)
+                pygame.draw.ellipse(screen, (200,170,240,64), (x,y,random.randint(40, 80),random.randint(16,32)))
+        elif motif == 'glitch':
+            # Jittering rectangles/noise blocks
+            for _ in range(16):
+                x = random.randint(0,SCREEN_WIDTH-8)
+                y = random.randint(0,SCREEN_HEIGHT-5)
+                col = (random.randint(100,255), random.randint(60,160), random.randint(90,255))
+                pygame.draw.rect(screen, col, (x,y,random.randint(3,13),random.randint(2,9)))
+            for _ in range(7):
+                x1 = random.randint(0,SCREEN_WIDTH)
+                x2 = x1+random.randint(8,90)
+                y = random.randint(0,SCREEN_HEIGHT)
+                c = (random.randint(40,255),random.randint(80,255),random.randint(180,255))
+                pygame.draw.line(screen, c, (x1,y), (x2,y), 2)
+        elif motif == 'noodle_rain':
+            # Thin arcs and straight lines as noodles falling from sky
+            for _ in range(13):
+                x = random.randint(0,SCREEN_WIDTH)
+                pygame.draw.arc(screen, (235,199,95), (x, 0, 12, 44), 0, 3.1415, 2)
+            for _ in range(15):
+                x, y = random.randint(0,SCREEN_WIDTH), random.randint(0, SCREEN_HEIGHT//2)
+                pygame.draw.line(screen, (252, 223, 156), (x, y), (x+random.randint(-3,3),y+random.randint(18,28)), 3)
+        elif motif == 'vines_bricks':
+            # Ruins + creeping vines
+            for _ in range(12):
+                x = random.randint(20,SCREEN_WIDTH-20)
+                y = random.randint(90,SCREEN_HEIGHT-30)
+                pygame.draw.rect(screen, (110,106,100), (x, y, random.randint(16,32), random.randint(8,36)), 0)
+                if random.random()<0.7:
+                    rx = x+random.randint(0,15)
+                    for i in range(5):
+                        pygame.draw.line(screen, (90,150,100), (rx,y+8+i*8), (rx+random.randint(-5,5),y+16+i*12), 3)
+        elif motif == 'sea_dark':
+            # Undersea - murky overlays and shadow shapes
+            for _ in range(7):
+                x = random.randint(0,SCREEN_WIDTH-25)
+                y = random.randint(SCREEN_HEIGHT//2,SCREEN_HEIGHT-10)
+                pygame.draw.ellipse(screen, (70,60,122,100), (x, y, random.randint(22,70), random.randint(10,20)), 0)
 
 

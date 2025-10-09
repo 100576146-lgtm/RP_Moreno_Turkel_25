@@ -298,6 +298,62 @@ class Platform(pygame.sprite.Sprite):
             for i in range(height//7):
                 nc = random.choice(neon_colors)
                 pygame.draw.line(self.image, nc, (0, 2+i*7), (width, 4+i*7), 3)
+        elif style == "cheese_lava":
+            # Yellow/orange platforms with melty, bubbly cheese look and glowing edges
+            self.image.fill((255, 220, 80))
+            for x in range(0, width, 24):
+                pygame.draw.ellipse(self.image, (255, 170, 40), (x, height-14, 24, 14))
+                pygame.draw.ellipse(self.image, (250, 250, 80), (x+4, height-18, 12, 10))
+            pygame.draw.arc(self.image, (255, 95, 33), (2, height-10, width-4, 12), 0, 3.1416, 4)
+        elif style == "moss_rock":
+            self.image.fill((144,176,120))
+            for x in range(0, width, 14):
+                pygame.draw.circle(self.image, (38,110,64), (x+7, height-4), 6)
+                pygame.draw.rect(self.image, (121,174,104), (x, 0, 14, height-8))
+            for _ in range(width//14):
+                cx, cy = random.randint(6, width-7), random.randint(height//2+5, height-4)
+                pygame.draw.ellipse(self.image, (121,200,104), (cx-5, cy-2, 10, 5))
+        elif style == "metallic":
+            self.image.fill((176,176,188))
+            for y in range(4, height, 8):
+                pygame.draw.line(self.image, (90, 90, 115), (0, y), (width, y), 1)
+            for i in range(4, width, 18):
+                pygame.draw.circle(self.image, (220, 220, 235), (i, height//2+3), 3)
+            pygame.draw.rect(self.image, (101,115,133), (0, 0, width, height), 2)
+        elif style == "glitch":
+            # Platforms with color jitters and noise lines
+            import numpy as np
+            g_color = (random.randint(80,255), random.randint(40,160), random.randint(90,250))
+            self.image.fill(g_color)
+            for i in range(5):
+                col = (random.randint(0,255), random.randint(0,255), random.randint(0,255))
+                pygame.draw.line(self.image, col, (random.randint(0,width-1), random.randint(0,height-1)), (random.randint(0,width-1), random.randint(0,height-1)), 1)
+        elif style == "spaghetti":
+            # Tan/yellow noodles: thin ropes and curly arcs on pastel base
+            self.image.fill((239, 214, 135))
+            for _ in range(width//9):
+                x = random.randint(2,width-3)
+                y1, y2 = random.randint(2,height-8), random.randint(height-14,height-2)
+                pygame.draw.line(self.image, (235,199,95), (x,y1), (x+random.randint(-3,3),y2), 2)
+            for _ in range(4):
+                rx = random.randint(1,width-20)
+                pygame.draw.arc(self.image, (252, 223, 156), (rx, height-16, 18, 12), 0, 3.1416, 2)
+        elif style == "concrete":
+            self.image.fill((170,170,155))
+            for x in range(6, width-6, 22):
+                pygame.draw.rect(self.image, (120,133,110), (x, height-10, 20, 10))
+            for _ in range(4):
+                bx,by = random.randint(2,width-18),random.randint(6,height-12)
+                pygame.draw.rect(self.image, (194,207,197),(bx,by,14,10))
+        elif style == "tentacle":
+            # Tentacle-like shapes (purple/blue) wrapping the platform
+            self.image.fill((170,200,245))
+            for _ in range(2):
+                base_x = random.randint(0, width-30)
+                pygame.draw.arc(self.image, (90,60,150), (base_x, height-17, 30, 18), 0.4, 2.7, 6)
+            for _ in range(3):
+                tx,ty = random.randint(3,width-9),height-random.randint(4,14)
+                pygame.draw.circle(self.image, (94,63,181), (tx, ty), 6)
         else:
             # Default grass
             self.image.fill(LIGHT_BROWN)
