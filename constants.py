@@ -31,6 +31,110 @@ LIGHT_BROWN = (205, 183, 158)
 MOUNTAIN_PURPLE = (176, 196, 222)
 MOUNTAIN_BLUE = (119, 136, 153)
 
+# --- New Theme Color Constants ---
+# (Add these to your constants.py file)
+
+# The Big Melt-down
+CHEESE_YELLOW = (255, 215, 0)
+
+# Moss-t Be Joking
+MOSS_GREEN = (138, 154, 91)
+
+# Smelted Dreams
+SLATE_GREY = (112, 128, 144)
+DARK_GREY = (45, 45, 45)
+SILVER = (192, 192, 192)
+MOLTEN_ORANGE = (253, 108, 2)
+STEEL_BLUE = (70, 130, 180)
+
+# Frost and Furious
+CYAN = (0, 255, 255)
+
+# Boo Who?
+DARK_PURPLE = (48, 25, 52)
+
+# 404: Floor Not Found
+GLITCH_GREEN = (0, 255, 127)
+MAGENTA = (255, 0, 255)
+
+# Pasta La Vista
+TOMATO_RED = (255, 99, 71)
+BASIL_GREEN = (85, 107, 47)
+
+# Concrete Jungle
+CONCRETE_GREY = (149, 149, 149)
+RUST_ORANGE = (183, 65, 14)
+
+# Kraken Me Up
+DEEP_BLUE = (0, 0, 139)
+DARK_BLUE = (0, 0, 128)
+TEAL = (0, 128, 128)
+SEAWEED_GREEN = (47, 79, 79)
+INK_BLACK = (25, 25, 25)
+
+# --- New Color Constants for Themed Levels ---
+# (Add these to your constants.py file)
+
+# The Big Melt-down
+HAZY_ORANGE = (238, 196, 128)
+MOLTEN_RED = (200, 50, 10)
+FONDUE_YELLOW = (255, 215, 0)
+BURNT_ORANGE = (204, 85, 0)
+SOOT_GREY = (58, 58, 58)
+
+# Moss-t Be Joking
+MISTY_GREY = (185, 195, 199)
+FOREST_FLOOR_GREEN = (77, 98, 62)
+MOSS_GREEN = (138, 154, 91)
+WET_ROCK_GREY = (115, 128, 126)
+DARK_BROWN = (101, 67, 33)
+
+# Smelted Dreams
+SMOKE_GREY = (112, 112, 112)
+FORGE_GLOW = (255, 153, 0)
+STEEL_GREY = (150, 150, 150)
+MOLTEN_ORANGE = (253, 108, 2)
+ELECTRIC_BLUE = (125, 249, 255)
+
+# Frost and Furious
+GLACIER_WHITE = (230, 245, 255)
+FROST_BLUE = (143, 204, 251)
+ICE_BLUE = (157, 222, 237)
+SNOW_WHITE = (250, 250, 250)
+WARNING_RED = (255, 30, 30)
+
+# Boo Who?
+MIDNIGHT_PURPLE = (40, 26, 56)
+ECTOPLASM_GREEN = (152, 251, 152)
+GHOSTLY_WHITE = (230, 230, 250)
+SHADOW_GREY = (70, 70, 80)
+
+# 404: Floor Not Found
+GLITCH_GREEN = (0, 255, 127)
+ERROR_RED = (255, 0, 85)
+STATIC_WHITE = (220, 220, 220)
+
+# Pasta La Vista
+PARMESAN_YELLOW = (248, 240, 202)
+MARINARA_RED = (190, 48, 28)
+TOMATO_RED = (255, 99, 71)
+BASIL_GREEN = (85, 107, 47)
+MOZZARELLA_WHITE = (252, 250, 242)
+
+# Concrete Jungle
+CITY_SMOG_GREY = (163, 168, 171)
+OVERGROWTH_GREEN = (105, 134, 111)
+RUST_ORANGE = (183, 65, 14)
+CONCRETE_GREY = (149, 149, 149)
+IVY_GREEN = (86, 130, 89)
+
+# Kraken Me Up
+MURKY_TEAL = (55, 92, 98)
+ABYSSAL_BLACK = (12, 15, 23)
+DEEP_SEA_BLUE = (0, 82, 112)
+BIOLUMINESCENT_GREEN = (60, 255, 150)
+INK_BLACK = (25, 25, 25)
+
 # Physics
 GRAVITY = 0.8
 JUMP_STRENGTH = -15

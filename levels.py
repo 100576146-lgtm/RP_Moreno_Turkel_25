@@ -1,59 +1,111 @@
 import constants as const
+import random
+from typing import List, Dict, Any
+
+# --- Themes updated to include specific texture/asset filenames ---
+LEVEL_THEMES: List[Dict[str, Any]] = [
+    {
+        "name": "The Big Melt-down",
+        "sky_top": const.HAZY_ORANGE, "sky_bottom": const.MOLTEN_RED,
+        "enemy_palette": [const.FONDUE_YELLOW, const.BURNT_ORANGE, const.SOOT_GREY],
+        "ground_texture": "melted_cheese_floor.png",
+        "platform_texture": "cheese_platform.png",
+        "background_image": "fondue_factory_bg.png",
+        "quirks": "slowing_cheese_pools"
+    },
+    {
+        "name": "Moss-t Be Joking",
+        "sky_top": const.MISTY_GREY, "sky_bottom": const.FOREST_FLOOR_GREEN,
+        "enemy_palette": [const.MOSS_GREEN, const.WET_ROCK_GREY, const.DARK_BROWN],
+        "ground_texture": "mossy_ground.png",
+        "platform_texture": "mossy_boulder.png",
+        "background_image": "ancient_ruins_bg.png",
+        "quirks": "slippery_platforms"
+    },
+    {
+        "name": "Smelted Dreams",
+        "sky_top": const.SMOKE_GREY, "sky_bottom": const.FORGE_GLOW,
+        "enemy_palette": [const.STEEL_GREY, const.MOLTEN_ORANGE, const.ELECTRIC_BLUE],
+        "ground_texture": "grated_metal_floor.png",
+        "platform_texture": "metal_beam.png",
+        "background_image": "smeltery_gears_bg.png",
+        "quirks": "magnetic_platforms"
+    },
+    {
+        "name": "Frost and Furious",
+        "sky_top": const.GLACIER_WHITE, "sky_bottom": const.FROST_BLUE,
+        "enemy_palette": [const.ICE_BLUE, const.SNOW_WHITE, const.WARNING_RED],
+        "ground_texture": "packed_snow_ground.png",
+        "platform_texture": "ice_ramp.png",
+        "background_image": "blizzard_speed_bg.png",
+        "quirks": "forced_movement_slides"
+    },
+    {
+        "name": "Boo Who?",
+        "sky_top": const.MIDNIGHT_PURPLE, "sky_bottom": const.BLACK,
+        "enemy_palette": [const.ECTOPLASM_GREEN, const.GHOSTLY_WHITE, const.SHADOW_GREY],
+        "ground_texture": "haunted_floorboards.png",
+        "platform_texture": "spectral_platform.png",
+        "background_image": "haunted_mansion_bg.png",
+        "quirks": "look_away_platforms"
+    },
+    {
+        "name": "404: Floor Not Found",
+        "sky_top": const.BLACK, "sky_bottom": const.BLACK,
+        "enemy_palette": [const.GLITCH_GREEN, const.ERROR_RED, const.STATIC_WHITE],
+        "ground_texture": "digital_grid_floor.png",
+        "platform_texture": "glitch_block.png",
+        "background_image": "matrix_code_bg.png",
+        "quirks": "random_disappearing_platforms"
+    },
+    {
+        "name": "Pasta La Vista",
+        "sky_top": const.PARMESAN_YELLOW, "sky_bottom": const.MARINARA_RED,
+        "enemy_palette": [const.TOMATO_RED, const.BASIL_GREEN, const.MOZZARELLA_WHITE],
+        "ground_texture": "marinara_sauce_ground.png",
+        "platform_texture": "meatball_platform.png",
+        "background_image": "giant_kitchen_bg.png",
+        "quirks": "spaghetti_vines_swing"
+    },
+    {
+        "name": "Concrete Jungle",
+        "sky_top": const.CITY_SMOG_GREY, "sky_bottom": const.OVERGROWTH_GREEN,
+        "enemy_palette": [const.RUST_ORANGE, const.CONCRETE_GREY, const.IVY_GREEN],
+        "ground_texture": "overgrown_pavement.png",
+        "platform_texture": "cracked_concrete_vines.png",
+        "background_image": "ruined_cityscape_bg.png",
+        "quirks": "hostile_robotic_turrets"
+    },
+    {
+        "name": "Kraken Me Up",
+        "sky_top": const.MURKY_TEAL, "sky_bottom": const.ABYSSAL_BLACK,
+        "enemy_palette": [const.DEEP_SEA_BLUE, const.BIOLUMINESCENT_GREEN, const.INK_BLACK],
+        "ground_texture": "sandy_seabed.png",
+        "platform_texture": "sunken_ship_plank.png",
+        "background_image": "deep_sea_abyss_bg.png",
+        "quirks": "tentacle_attacks_from_background"
+    },
+]
 
 
-def generate_levels():
-    themes = [
-        # MEADOW: default style but brighter flowers, green platforms, happy colors
-        {"name": "Meadow", "sky_top": const.LAVENDER, "sky_bottom": const.SKY_BLUE,
-          "enemy_palette": [const.SOFT_PINK, const.PASTEL_GREEN, const.SOFT_YELLOW],
-          "platform_style": "grass", "bg_motif": "flowers", "quirks": None},
-        # ICE: all blue/white, crystal platforms, snow enemies, platforms are slippery
-        {"name": "Ice", "sky_top": const.SOFT_BLUE, "sky_bottom": const.LAVENDER,
-          "enemy_palette": [const.SOFT_BLUE, const.WHITE, const.LAVENDER],
-          "platform_style": "ice", "bg_motif": "ice_shards", "quirks": "slippery_platforms"},
-        # FIRE: red/orange, magma blobs as enemies, platforms are rocky, falling embers
-        {"name": "Fire", "sky_top": const.PEACH, "sky_bottom": const.CORAL,
-          "enemy_palette": [const.CORAL, const.PEACH, const.SOFT_YELLOW],
-          "platform_style": "lava", "bg_motif": "embers", "quirks": "enemies_jump"},
-        # FOREST: wooden logs, green enemies, mushroom platforms are bouncy
-        {"name": "Forest", "sky_top": const.MINT_GREEN, "sky_bottom": const.PASTEL_GREEN,
-          "enemy_palette": [const.SAGE_GREEN, const.MINT_GREEN, const.BEIGE],
-          "platform_style": "mushroom", "bg_motif": "vines", "quirks": "bouncy_mushrooms"},
-        # UNDERWATER: blue/seaweed, bubble enemies, slow/floating/jiggly jumps
-        {"name": "Underwater", "sky_top": const.SOFT_BLUE, "sky_bottom": const.SKY_BLUE,
-          "enemy_palette": [const.SKY_BLUE, const.MINT_GREEN, const.PASTEL_GREEN],
-          "platform_style": "coral", "bg_motif": "bubbles", "quirks": "slow_jumps"},
-        # DESERT: beige/sandy, blocky platforms and sand enemies, moving sand clouds
-        {"name": "Desert", "sky_top": const.CREAM, "sky_bottom": const.SOFT_YELLOW,
-          "enemy_palette": [const.BEIGE, const.LIGHT_BROWN, const.SOFT_YELLOW],
-          "platform_style": "sandstone", "bg_motif": "sand", "quirks": None},
-        # NIGHT: dark, purple/blue, spooky enemies, flickering platforms
-        {"name": "Night", "sky_top": const.LIGHT_PURPLE, "sky_bottom": const.DUSTY_ROSE,
-          "enemy_palette": [const.LIGHT_PURPLE, const.DUSTY_ROSE, const.BLACK],
-          "platform_style": "ghost", "bg_motif": "stars", "quirks": "platforms_flicker"},
-        # VOLCANO: dark/red, platforms crack, enemies are fast, ash in air
-        {"name": "Volcano", "sky_top": const.CORAL, "sky_bottom": const.DUSTY_ROSE,
-          "enemy_palette": [const.CORAL, const.DUSTY_ROSE, const.BLACK],
-          "platform_style": "volcano", "bg_motif": "ash", "quirks": "fast_enemies"},
-        # SKY: sky islands, cloud platforms, rainbow enemies, floaty feel
-        {"name": "Sky", "sky_top": const.SKY_BLUE, "sky_bottom": const.SOFT_BLUE,
-          "enemy_palette": [const.SOFT_PINK, const.LAVENDER, const.SOFT_YELLOW],
-          "platform_style": "cloud", "bg_motif": "rainbow", "quirks": "low_gravity"},
-        # NEON: black bg, neon platforms, enemies glow
-        {"name": "Neon", "sky_top": const.SOFT_PINK, "sky_bottom": const.LIGHT_PURPLE,
-          "enemy_palette": [const.SOFT_PINK, const.MINT_GREEN, const.SOFT_YELLOW],
-          "platform_style": "neon", "bg_motif": "glow", "quirks": "enemies_glow"},
-    ]
+def generate_levels(num_levels: int = 10) -> List[Dict[str, Any]]:
+    """
+    Generates a list of unique, progressively difficult game levels.
+    """
     levels = []
-    for i in range(10):
+    available_themes = LEVEL_THEMES.copy()
+    random.shuffle(available_themes)
+
+    for i in range(num_levels):
         width = 2800 + i * 400
         difficulty = i
+        theme = available_themes[i % len(available_themes)]
+
         levels.append({
             "width": width,
             "height": 600,
             "difficulty": difficulty,
-            "theme": themes[i % len(themes)]
+            "theme": theme
         })
+
     return levels
-
-
