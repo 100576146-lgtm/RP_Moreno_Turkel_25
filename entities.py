@@ -1,6 +1,6 @@
 import random
 import pygame
-from constants import GRAVITY, JUMP_STRENGTH, PLAYER_SPEED, ENEMY_SPEED, LEVEL_WIDTH, LEVEL_HEIGHT, WHITE, BLACK, SOFT_PURPLE, LIGHT_PURPLE, SOFT_PINK, DUSTY_ROSE, PEACH, CORAL, MOUNTAIN_BLUE, BEIGE, LIGHT_BROWN, SAGE_GREEN, PASTEL_GREEN, MINT_GREEN, SOFT_YELLOW, SOFT_BLUE
+from constants import GRAVITY, JUMP_STRENGTH, PLAYER_SPEED, ENEMY_SPEED, LEVEL_WIDTH, LEVEL_HEIGHT, WHITE, BLACK, SOFT_PURPLE, LIGHT_PURPLE, SOFT_PINK, DUSTY_ROSE, PEACH, CORAL, MOUNTAIN_BLUE, BEIGE, LIGHT_BROWN, SAGE_GREEN, PASTEL_GREEN, MINT_GREEN, SOFT_YELLOW, SOFT_BLUE, CREAM
 
 
 class Player(pygame.sprite.Sprite):
@@ -117,20 +117,22 @@ class Player(pygame.sprite.Sprite):
 
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, x, y, enemy_type="basic"):
+    def __init__(self, x, y, enemy_type="basic", theme=None):
         super().__init__()
         self.enemy_type = enemy_type
+        self.theme = theme or {}
+        # Make all enemies much larger and rounder for visibility
         if enemy_type == "basic":
-            self.image = pygame.Surface((36, 36), pygame.SRCALPHA)
+            self.image = pygame.Surface((56, 56), pygame.SRCALPHA)
             self.speed = ENEMY_SPEED
         elif enemy_type == "fast":
-            self.image = pygame.Surface((28, 28), pygame.SRCALPHA)
+            self.image = pygame.Surface((44, 44), pygame.SRCALPHA)
             self.speed = ENEMY_SPEED * 1.5
         elif enemy_type == "big":
-            self.image = pygame.Surface((48, 48), pygame.SRCALPHA)
+            self.image = pygame.Surface((72, 72), pygame.SRCALPHA)
             self.speed = ENEMY_SPEED * 0.7
         else:
-            self.image = pygame.Surface((32, 40), pygame.SRCALPHA)
+            self.image = pygame.Surface((52, 62), pygame.SRCALPHA)
             self.speed = ENEMY_SPEED
         self.rect = self.image.get_rect()
         self.rect.x = x
@@ -144,57 +146,49 @@ class Enemy(pygame.sprite.Sprite):
     def draw_enemy(self):
         self.image.fill((0, 0, 0, 0))
         w, h = self.image.get_size()
+        colors = self.theme.get('enemy_palette', [CORAL, SOFT_PINK, DUSTY_ROSE])
         if self.enemy_type == "basic":
-            pygame.draw.ellipse(self.image, CORAL, (3, 12, 30, 24))
-            pygame.draw.ellipse(self.image, DUSTY_ROSE, (3, 12, 30, 24), 2)
-            spike_points = [
-                [(8, 12), (12, 3), (16, 12)],
-                [(14, 12), (18, 1), (22, 12)],
-                [(20, 12), (24, 3), (28, 12)]
-            ]
-            for spike in spike_points:
-                pygame.draw.polygon(self.image, DUSTY_ROSE, spike)
-                pygame.draw.polygon(self.image, BLACK, spike, 1)
-            pygame.draw.circle(self.image, SOFT_PINK, (12, 18), 3)
-            pygame.draw.circle(self.image, SOFT_PINK, (24, 18), 3)
-            pygame.draw.circle(self.image, BLACK, (11, 17), 2)
-            pygame.draw.circle(self.image, BLACK, (23, 17), 2)
-            pygame.draw.line(self.image, BLACK, (15, 24), (21, 24), 3)
+            # Big blobby critter - themed color
+            base_c = colors[0]
+            sec_c = colors[1] if len(colors) > 1 else DUSTY_ROSE
+            pygame.draw.ellipse(self.image, base_c, (6, 20, w-12, h-32))
+            pygame.draw.ellipse(self.image, sec_c, (6, 20, w-12, h-32), 4)
+            pygame.draw.circle(self.image, colors[2%len(colors)], (w//3, h//2), 9)
+            pygame.draw.circle(self.image, colors[2%len(colors)], (2*w//3, h//2), 9)
+            pygame.draw.circle(self.image, BLACK, (w//3, h//2), 4)
+            pygame.draw.circle(self.image, BLACK, (2*w//3, h//2), 4)
+            pygame.draw.line(self.image, BLACK, (w//2 - 8, h//2 + 18), (w//2 + 8, h//2 + 18), 4)
         elif self.enemy_type == "fast":
-            pygame.draw.ellipse(self.image, SOFT_PINK, (2, 8, 24, 16))
-            pygame.draw.ellipse(self.image, CORAL, (2, 8, 24, 16), 2)
-            pygame.draw.polygon(self.image, CORAL, [(8, 8), (10, 4), (12, 8)])
-            pygame.draw.polygon(self.image, CORAL, [(16, 8), (18, 4), (20, 8)])
-            pygame.draw.circle(self.image, BLACK, (9, 14), 1)
-            pygame.draw.circle(self.image, BLACK, (19, 14), 1)
+            base_c = colors[0]
+            sec_c = colors[1] if len(colors) > 1 else SOFT_PINK
+            pygame.draw.ellipse(self.image, sec_c, (7, 11, w-14, h-22))
+            pygame.draw.ellipse(self.image, base_c, (7, 11, w-14, h-22), 4)
+            pygame.draw.polygon(self.image, base_c, [(w//4, 12), (w//2, 2), (3*w//4, 12)])
+            pygame.draw.circle(self.image, BLACK, (w//3, h//2), 4)
+            pygame.draw.circle(self.image, BLACK, (2*w//3, h//2), 4)
         elif self.enemy_type == "big":
-            pygame.draw.ellipse(self.image, DUSTY_ROSE, (4, 16, 40, 32))
-            pygame.draw.ellipse(self.image, CORAL, (4, 16, 40, 32), 3)
-            spike_points = [
-                [(10, 16), (16, 4), (22, 16)],
-                [(18, 16), (24, 2), (30, 16)],
-                [(26, 16), (32, 4), (38, 16)]
-            ]
-            for spike in spike_points:
-                pygame.draw.polygon(self.image, CORAL, spike)
-                pygame.draw.polygon(self.image, BLACK, spike, 2)
-            pygame.draw.circle(self.image, SOFT_PINK, (16, 24), 4)
-            pygame.draw.circle(self.image, SOFT_PINK, (32, 24), 4)
-            pygame.draw.circle(self.image, BLACK, (15, 23), 3)
-            pygame.draw.circle(self.image, BLACK, (31, 23), 3)
+            base_c = colors[0]
+            sec_c = colors[1] if len(colors) > 1 else CORAL
+            pygame.draw.rect(self.image, sec_c, (12, 18, w-24, h-32), border_radius=14)
+            pygame.draw.rect(self.image, base_c, (12, 18, w-24, h-32), 5, border_radius=14)
+            pygame.draw.circle(self.image, colors[2%len(colors)], (w//3, h//2), 14)
+            pygame.draw.circle(self.image, colors[2%len(colors)], (2*w//3, h//2), 14)
+            pygame.draw.circle(self.image, BLACK, (w//3, h//2), 5)
+            pygame.draw.circle(self.image, BLACK, (2*w//3, h//2), 5)
+            pygame.draw.line(self.image, BLACK, (w//2 - 12, h//2 + 25), (w//2 + 12, h//2 + 25), 6)
         else:
-            pygame.draw.ellipse(self.image, PEACH, (4, 20, 24, 20))
-            pygame.draw.ellipse(self.image, CORAL, (4, 20, 24, 20), 2)
-            for i in range(3):
-                y = 15 + i * 4
-                pygame.draw.ellipse(self.image, DUSTY_ROSE, (6, y, 20, 3))
-            pygame.draw.circle(self.image, WHITE, (12, 12), 3)
-            pygame.draw.circle(self.image, WHITE, (20, 12), 3)
-            pygame.draw.circle(self.image, BLACK, (12, 12), 2)
-            pygame.draw.circle(self.image, BLACK, (20, 12), 2)
-        foot_y = h - 6
-        pygame.draw.ellipse(self.image, BLACK, (w//4, foot_y, w//6, 4))
-        pygame.draw.ellipse(self.image, BLACK, (3*w//4 - w//6, foot_y, w//6, 4))
+            base_c = colors[0]
+            sec_c = colors[1] if len(colors) > 1 else LIGHT_PURPLE
+            pygame.draw.ellipse(self.image, sec_c, (10, h//2-12, w-20, h//2-10))
+            pygame.draw.ellipse(self.image, base_c, (10, h//2-12, w-20, h//2-10), 3)
+            pygame.draw.circle(self.image, base_c, (w//3, h//2-9), 10)
+            pygame.draw.circle(self.image, sec_c, (2*w//3, h//2-9), 10)
+            pygame.draw.circle(self.image, BLACK, (w//3, h//2-9), 3)
+            pygame.draw.circle(self.image, BLACK, (2*w//3, h//2-9), 3)
+        # Feet for all types
+        foot_y = h - 10
+        pygame.draw.ellipse(self.image, BLACK, (w//4, foot_y, w//6, 8))
+        pygame.draw.ellipse(self.image, BLACK, (3*w//4 - w//6, foot_y, w//6, 8))
 
     def update(self, platforms):
         self.vel_y += GRAVITY
@@ -229,31 +223,83 @@ class Enemy(pygame.sprite.Sprite):
 
 
 class Platform(pygame.sprite.Sprite):
-    def __init__(self, x, y, width, height, platform_type="normal"):
+    def __init__(self, x, y, width, height, platform_type="normal", theme=None):
         super().__init__()
-        self.image = pygame.Surface((width, height))
+        self.image = pygame.Surface((width, height), pygame.SRCALPHA)
         self.rect = pygame.Rect(x, y, width, height)
         self.platform_type = platform_type
         self.original_x = x
         self.move_offset = 0
+        self.theme = theme or {}
         self.draw_platform(width, height)
 
     def draw_platform(self, width, height):
-        if self.platform_type == "cloud":
+        style = self.theme.get('platform_style', self.platform_type)
+        # Cloud (for sky/neon)
+        if style == "cloud":
             self.image.fill((0, 0, 0, 0))
             pygame.draw.ellipse(self.image, WHITE, (0, height//3, width, height//2))
             for x in range(0, width, width//4):
                 pygame.draw.circle(self.image, WHITE, (x + width//8, height//2), height//3)
             pygame.draw.ellipse(self.image, LIGHT_PURPLE, (2, height//3 + 2, width-4, height//2 - 4))
-        elif self.platform_type == "ice":
+        elif style == "ice":
             self.image.fill(SOFT_BLUE)
-            for x in range(0, width, 20):
-                for y in range(0, height, 10):
-                    if random.random() < 0.3:
-                        pygame.draw.circle(self.image, WHITE, (x + random.randint(0, 15), y + random.randint(0, 8)), 1)
+            for x in range(0, width, 18):
+                for y in range(0, height, 8):
+                    if random.random() < 0.25:
+                        pygame.draw.circle(self.image, WHITE, (x + random.randint(0, 15), y + random.randint(0, 8)), 2)
             pygame.draw.line(self.image, WHITE, (0, 0), (width, 0), 2)
-            pygame.draw.line(self.image, MOUNTAIN_BLUE, (0, height-1), (width, height-1), 1)
+            pygame.draw.line(self.image, LIGHT_PURPLE, (0, height-1), (width, height-1), 2)
+        elif style == "lava":
+            self.image.fill(CORAL)
+            pygame.draw.rect(self.image, DUSTY_ROSE, (0, 0, width, height), 3)
+            for x in range(width // 10):
+                pygame.draw.arc(self.image, PEACH, (x * 10, height - 12, 10, 18), 0, 3.14, 2)
+            # cracks
+            for i in range(width // 30):
+                rx = random.randint(0, width - 10)
+                len_ = random.randint(3, 10)
+                pygame.draw.line(self.image, BLACK, (rx, height - 4), (rx + len_, height - 2), 1)
+        elif style == "mushroom":
+            self.image.fill(MINT_GREEN)
+            pygame.draw.circle(self.image, PASTEL_GREEN, (width//2, 0), width//3)
+            for i in range(6):
+                dotx = random.randint(0, width-8)
+                doty = random.randint(0, 8)
+                pygame.draw.circle(self.image, SOFT_YELLOW, (dotx, doty + 4), 3)
+        elif style == "coral":
+            self.image.fill(SKY_BLUE)
+            for y in range(0, height, 6):
+                pygame.draw.arc(self.image, SOFT_PINK, (0, y, width, 12), 0, 3.1416, 2)
+            for cx in range(12, width, 36):
+                pygame.draw.circle(self.image, MINT_GREEN, (cx, height-6), 5)
+        elif style == "sandstone":
+            self.image.fill(BEIGE)
+            for x in range(0, width, 16):
+                level = random.choice([SOFT_YELLOW, PEACH, CREAM])
+                pygame.draw.rect(self.image, level, (x, height-10, 14, 10))
+            pygame.draw.rect(self.image, LIGHT_BROWN, (0, 0, width, height), 2)
+        elif style == "ghost":
+            self.image.fill(LIGHT_PURPLE)
+            for i in range(5):
+                rx = random.randint(8, width-8); ry = random.randint(0, height-10)
+                pygame.draw.ellipse(self.image, WHITE, (rx, ry, 8, 6), 0);
+            pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 2)
+        elif style == "volcano":
+            self.image.fill(DUSTY_ROSE)
+            for x in range(width // 11):
+                pygame.draw.arc(self.image, CORAL, (x * 10, height-12, 12, 16), 0, 3.1416, 2)
+            for _ in range(width//20):
+                rx = random.randint(0, width-10)
+                pygame.draw.line(self.image, CORAL, (rx, height-5), (rx+random.randint(-3,3), height), 2)
+        elif style == "neon":
+            self.image.fill(BLACK)
+            neon_colors = [SOFT_PINK, MINT_GREEN, SOFT_YELLOW, SKY_BLUE]
+            for i in range(height//7):
+                nc = random.choice(neon_colors)
+                pygame.draw.line(self.image, nc, (0, 2+i*7), (width, 4+i*7), 3)
         else:
+            # Default grass
             self.image.fill(LIGHT_BROWN)
             grass_height = min(8, height // 3)
             pygame.draw.rect(self.image, SAGE_GREEN, (0, 0, width, grass_height))

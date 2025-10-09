@@ -48,7 +48,7 @@ class Game:
         self.bg.set_theme(self.theme)
 
         for x in range(0, level_def["width"], 200):
-            platform = Platform(x, level_def["height"] - 40, 200, 40)
+            platform = Platform(x, level_def["height"] - 40, 200, 40, platform_type=self.theme.get("platform_style", "normal"), theme=self.theme)
             self.platforms.add(platform)
             self.all_sprites.add(platform)
 
@@ -67,7 +67,7 @@ class Game:
                 ptype = rng.choice(["normal", "cloud", "ice", "moving"]) if s % 2 == 0 else rng.choice(["normal", "cloud", "ice"])
                 platforms_data.append((x, y, w, h, ptype))
         for x, y, w, h, ptype in platforms_data:
-            platform = Platform(x, y, w, h, ptype)
+            platform = Platform(x, y, w, h, theme=self.theme)
             self.platforms.add(platform)
             self.all_sprites.add(platform)
 
@@ -81,7 +81,7 @@ class Game:
             etype = rng.choices(enemy_kinds, weights=[4, 3 + level_def["difficulty"], 3, 1 + level_def["difficulty"]//2])[0]
             enemy_data.append((x, y, etype))
         for x, y, etype in enemy_data:
-            enemy = Enemy(x, y, etype)
+            enemy = Enemy(x, y, etype, theme=self.theme)
             self.enemies.add(enemy)
             self.all_sprites.add(enemy)
 
