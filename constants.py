@@ -4,10 +4,14 @@ from enum import Enum
 # Initialize pygame subsystems needed by fonts/colors
 pygame.init()
 
-# Screen
+# Screen - Support for variable screen sizes
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 FPS = 60
+
+# Fullscreen support
+FULLSCREEN_WIDTH = 1920
+FULLSCREEN_HEIGHT = 1080
 
 # Colors (Pastel Scheme)
 WHITE = (255, 255, 255)
@@ -139,11 +143,17 @@ INK_BLACK = (25, 25, 25)
 GRAVITY = 0.8
 JUMP_STRENGTH = -15
 PLAYER_SPEED = 5
+
+# Calculate maximum jump height
+# Jump height = (JUMP_STRENGTH^2) / (2 * GRAVITY)
+MAX_JUMP_HEIGHT = int((JUMP_STRENGTH * JUMP_STRENGTH) / (2 * GRAVITY))
+# Add some buffer for safety
+SAFE_JUMP_HEIGHT = MAX_JUMP_HEIGHT + 20
 ENEMY_SPEED = 2
 
 # Level dimensions (mutable; set per-level)
-LEVEL_WIDTH = 3200
-LEVEL_HEIGHT = 600
+LEVEL_WIDTH = 6400  # Doubled the level width
+LEVEL_HEIGHT = 600  # Match screen height for full visibility
 
 class GameState(Enum):
     MENU = 1

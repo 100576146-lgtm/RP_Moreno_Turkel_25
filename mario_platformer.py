@@ -878,7 +878,7 @@ class Game:
         self._bg_cache = None
         # Ground platforms
         for x in range(0, LEVEL_WIDTH, 200):
-            platform = Platform(x, LEVEL_HEIGHT - 40, 200, 40)
+            platform = Platform(x, LEVEL_HEIGHT - 40, 200, 40, platform_type="ground", theme=self.theme)
             self.platforms.add(platform)
             self.all_sprites.add(platform)
         
@@ -899,7 +899,7 @@ class Game:
                 platforms_data.append((x, y, w, h, ptype))
         
         for x, y, w, h, ptype in platforms_data:
-            platform = Platform(x, y, w, h, ptype)
+            platform = Platform(x, y, w, h, ptype, theme=self.theme)
             self.platforms.add(platform)
             self.all_sprites.add(platform)
         
@@ -1111,11 +1111,8 @@ class Game:
                 if self.lives <= 0:
                     self.state = GameState.GAME_OVER
                 else:
-                    # Respawn player
-                    self.player.rect.x = 100
-                    self.player.rect.y = 400
-                    self.player.vel_x = 0
-                    self.player.vel_y = 0
+                    # Respawn player using the respawn method
+                    self.player.respawn(100, 400)
             elif result == "enemy_killed":
                 self.score += 100
                 # Check for level progression

@@ -97,13 +97,13 @@ def generate_levels(num_levels: int = 10) -> List[Dict[str, Any]]:
     random.shuffle(available_themes)
 
     for i in range(num_levels):
-        width = 2800 + i * 400
+        width = 6400 + i * 800  # Much larger levels
         difficulty = i
         theme = available_themes[i % len(available_themes)]
 
         levels.append({
             "width": width,
-            "height": 600,
+            "height": 600,  # Match screen height for visibility
             "difficulty": difficulty,
             "theme": theme
         })

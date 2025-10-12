@@ -3,7 +3,9 @@ from constants import BLACK, SOFT_PINK, MINT_GREEN, SOFT_YELLOW, PEACH, SKY_BLUE
 
 
 class UI:
-    def __init__(self):
+    def __init__(self, screen_width=SCREEN_WIDTH, screen_height=SCREEN_HEIGHT):
+        self.screen_width = screen_width
+        self.screen_height = screen_height
         self.font = pygame.font.Font(None, 36)
         self.font_small = pygame.font.Font(None, 28)
 

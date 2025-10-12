@@ -1,15 +1,28 @@
 import random
+import math
 import pygame
-from constants import GRAVITY, JUMP_STRENGTH, PLAYER_SPEED, ENEMY_SPEED, LEVEL_WIDTH, LEVEL_HEIGHT, WHITE, BLACK, SOFT_PURPLE, LIGHT_PURPLE, SOFT_PINK, DUSTY_ROSE, PEACH, CORAL, MOUNTAIN_BLUE, BEIGE, LIGHT_BROWN, SAGE_GREEN, PASTEL_GREEN, MINT_GREEN, SOFT_YELLOW, SOFT_BLUE, CREAM
+from constants import GRAVITY, JUMP_STRENGTH, PLAYER_SPEED, ENEMY_SPEED, LEVEL_WIDTH, LEVEL_HEIGHT, WHITE, BLACK, SOFT_PURPLE, LIGHT_PURPLE, SOFT_PINK, DUSTY_ROSE, PEACH, CORAL, MOUNTAIN_BLUE, BEIGE, LIGHT_BROWN, SAGE_GREEN, PASTEL_GREEN, MINT_GREEN, SOFT_YELLOW, SOFT_BLUE, CREAM, CHEESE_YELLOW, BURNT_ORANGE, SOOT_GREY, MOSS_GREEN, DARK_BROWN, WET_ROCK_GREY, STEEL_GREY, DARK_GREY, SILVER, MOLTEN_ORANGE, ICE_BLUE, SNOW_WHITE, ECTOPLASM_GREEN, GHOSTLY_WHITE, SHADOW_GREY, GLITCH_GREEN, ERROR_RED, MOZZARELLA_WHITE, TOMATO_RED, BASIL_GREEN, CONCRETE_GREY, IVY_GREEN, DEEP_SEA_BLUE, DARK_BLUE, SEAWEED_GREEN, SKY_BLUE
+
+# Additional colors for new enemies
+RED = (255, 0, 0)
+YELLOW = (255, 255, 0)
+from sprite_animator import SpriteAnimator
 
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y, sound_manager=None):
         super().__init__()
-        self.image = pygame.Surface((32, 48), pygame.SRCALPHA)
+        
+        # Initialize sprite animator
+        self.sprite_animator = SpriteAnimator()
+        
+        # Get initial sprite and set up rect
+        self.image = self.sprite_animator.get_current_sprite()
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
+        
+        # Physics
         self.vel_x = 0
         self.vel_y = 0
         self.on_ground = False
@@ -17,54 +30,85 @@ class Player(pygame.sprite.Sprite):
         self.max_jumps = 1
         self.facing_right = True
         self.sound_manager = sound_manager
-        self.draw_character()
+        
+        # Animation state
+        self.animation_state = "idle"
+        self.is_dying = False
+        self.death_timer = 0
+        
+        # Set initial animation
+        self.sprite_animator.set_animation("idle", self.facing_right)
+    
+    def respawn(self, x, y):
+        """Reset player state for respawning."""
+        self.rect.x = x
+        self.rect.y = y
+        self.vel_x = 0
+        self.vel_y = 0
+        self.on_ground = False
+        self.jump_count = 0
+        self.is_dying = False
+        self.death_timer = 0
+        self.animation_state = "idle"
+        self.sprite_animator.set_animation("idle", self.facing_right)
 
     def draw_character(self):
-        self.image.fill((0, 0, 0, 0))
-        body_color = SOFT_PURPLE
-        outline = DUSTY_ROSE
-        pygame.draw.ellipse(self.image, body_color, (4, 18, 24, 26))
-        pygame.draw.ellipse(self.image, outline, (4, 18, 24, 26), 2)
-        pygame.draw.ellipse(self.image, body_color, (6, 4, 22, 18))
-        pygame.draw.ellipse(self.image, outline, (6, 4, 22, 18), 2)
-        pygame.draw.ellipse(self.image, LIGHT_PURPLE, (3, 6, 8, 12))
-        pygame.draw.ellipse(self.image, LIGHT_PURPLE, (23, 6, 8, 12))
-        snout_x = 18 if self.facing_right else 10
-        pygame.draw.ellipse(self.image, LIGHT_PURPLE, (snout_x, 10, 8, 6))
-        pygame.draw.circle(self.image, SOFT_PINK, (snout_x + (6 if self.facing_right else 2), 13), 2)
-        if self.facing_right:
-            pygame.draw.circle(self.image, WHITE, (14, 10), 3)
-            pygame.draw.circle(self.image, WHITE, (20, 10), 3)
-            pygame.draw.circle(self.image, BLACK, (14, 10), 1)
-            pygame.draw.circle(self.image, BLACK, (20, 10), 1)
-        else:
-            pygame.draw.circle(self.image, WHITE, (12, 10), 3)
-            pygame.draw.circle(self.image, WHITE, (18, 10), 3)
-            pygame.draw.circle(self.image, BLACK, (12, 10), 1)
-            pygame.draw.circle(self.image, BLACK, (18, 10), 1)
-        pygame.draw.arc(self.image, LIGHT_PURPLE, (0, 22, 14, 16), 1.5, 3.0, 3)
-        pygame.draw.ellipse(self.image, DUSTY_ROSE, (6, 42, 8, 6))
-        pygame.draw.ellipse(self.image, DUSTY_ROSE, (18, 42, 8, 6))
-        pygame.draw.circle(self.image, SOFT_PINK, (10, 44), 1)
-        pygame.draw.circle(self.image, SOFT_PINK, (22, 44), 1)
+        """Update the character sprite using the sprite animator."""
+        # Update the sprite animator
+        self.sprite_animator.update()
+        
+        # Get the current sprite and update the image
+        self.image = self.sprite_animator.get_current_sprite()
+        
+        # Update the rect size to match the new sprite
+        old_center = self.rect.center
+        self.rect = self.image.get_rect()
+        self.rect.center = old_center
+    
 
     def update(self, platforms, enemies, powerups, obstacles, camera_x):
+        # Handle death animation
+        if self.is_dying:
+            self.death_timer += 1
+            if self.death_timer > 60:  # 1 second death animation
+                return "death"
+            # Keep showing dying animation
+            self.sprite_animator.set_animation("dying", self.facing_right)
+            self.draw_character()
+            return None
+        
         keys = pygame.key.get_pressed()
         self.vel_x = 0
         old_facing = self.facing_right
+        
+        # Determine animation state based on movement and physics
+        if self.vel_y < -2:  # Jumping up
+            self.animation_state = "jumping"
+        elif self.vel_y > 2:  # Falling
+            self.animation_state = "falling"
+        elif abs(self.vel_x) > 0:  # Moving horizontally
+            self.animation_state = "walking"
+        else:
+            self.animation_state = "idle"
+        
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
             self.vel_x = -PLAYER_SPEED
             self.facing_right = False
         if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             self.vel_x = PLAYER_SPEED
             self.facing_right = True
-        if old_facing != self.facing_right:
-            self.draw_character()
+        
+        # Update sprite animator with current state
+        self.sprite_animator.set_animation(self.animation_state, self.facing_right)
+        
         if (keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]) and self.on_ground:
             self.vel_y = JUMP_STRENGTH
             self.on_ground = False
+            self.animation_state = "jumping"
+            self.sprite_animator.set_animation("jumping", self.facing_right)
             if self.sound_manager:
                 self.sound_manager.play('jump')
+        
         self.vel_y += GRAVITY
         self.rect.x += self.vel_x
         collisions = pygame.sprite.spritecollide(self, platforms, False)
@@ -90,16 +134,38 @@ class Player(pygame.sprite.Sprite):
         if self.rect.right > LEVEL_WIDTH:
             self.rect.right = LEVEL_WIDTH
         if self.rect.top > LEVEL_HEIGHT:
-            return "death"
+            self.is_dying = True
+            self.animation_state = "dying"
+            self.sprite_animator.set_animation("dying", self.facing_right)
+            return None
         enemy_collisions = pygame.sprite.spritecollide(self, enemies, False)
         for enemy in enemy_collisions:
+            # Check if player is jumping on enemy (player's bottom is above enemy's center)
             if self.vel_y > 0 and self.rect.bottom < enemy.rect.centery:
-                enemy.kill()
-                self.vel_y = int(JUMP_STRENGTH * 1.15)
-                if self.sound_manager:
-                    self.sound_manager.play('enemy_kill')
-                return "enemy_killed"
+                # Handle different enemy types
+                if enemy.enemy_type in ["double_hit", "air_dragon"] and enemy.health > 1:
+                    # Multi-hit enemy - damage but don't kill
+                    enemy.take_damage()
+                    self.vel_y = int(JUMP_STRENGTH * 1.15)
+                    self.animation_state = "stomping"
+                    self.sprite_animator.set_animation("stomping", self.facing_right)
+                    if self.sound_manager:
+                        self.sound_manager.play('enemy_kill')
+                    return "enemy_damaged"
+                else:
+                    # Single-hit enemy or final hit on multi-hit enemy
+                    enemy.kill()
+                    self.vel_y = int(JUMP_STRENGTH * 1.15)
+                    self.animation_state = "stomping"
+                    self.sprite_animator.set_animation("stomping", self.facing_right)
+                    if self.sound_manager:
+                        self.sound_manager.play('enemy_kill')
+                    return "enemy_killed"
             else:
+                # Player got hit by enemy
+                self.is_dying = True
+                self.animation_state = "dying"
+                self.sprite_animator.set_animation("dying", self.facing_right)
                 if self.sound_manager:
                     self.sound_manager.play('hit')
                 return "hit"
@@ -110,9 +176,15 @@ class Player(pygame.sprite.Sprite):
             return "powerup"
         obstacle_collisions = pygame.sprite.spritecollide(self, obstacles, False)
         if obstacle_collisions:
+            self.is_dying = True
+            self.animation_state = "dying"
+            self.sprite_animator.set_animation("dying", self.facing_right)
             if self.sound_manager:
                 self.sound_manager.play('hit')
             return "hit"
+        
+        # Update character drawing with current animation state
+        self.draw_character()
         return None
 
 
@@ -121,6 +193,12 @@ class Enemy(pygame.sprite.Sprite):
         super().__init__()
         self.enemy_type = enemy_type
         self.theme = theme or {}
+        
+        # Enemy health and state
+        self.health = 1
+        self.max_health = 1
+        self.is_air_enemy = False
+        
         # Make all enemies much larger and rounder for visibility
         if enemy_type == "basic":
             self.image = pygame.Surface((56, 56), pygame.SRCALPHA)
@@ -131,9 +209,25 @@ class Enemy(pygame.sprite.Sprite):
         elif enemy_type == "big":
             self.image = pygame.Surface((72, 72), pygame.SRCALPHA)
             self.speed = ENEMY_SPEED * 0.7
-        else:
+        elif enemy_type == "double_hit":
+            self.image = pygame.Surface((64, 64), pygame.SRCALPHA)
+            self.speed = ENEMY_SPEED * 0.8
+            self.health = 2
+            self.max_health = 2
+        elif enemy_type == "air_bat":
+            self.image = pygame.Surface((48, 32), pygame.SRCALPHA)
+            self.speed = ENEMY_SPEED * 1.2
+            self.is_air_enemy = True
+        elif enemy_type == "air_dragon":
+            self.image = pygame.Surface((60, 40), pygame.SRCALPHA)
+            self.speed = ENEMY_SPEED * 0.9
+            self.is_air_enemy = True
+            self.health = 2
+            self.max_health = 2
+        else:  # jumper
             self.image = pygame.Surface((52, 62), pygame.SRCALPHA)
             self.speed = ENEMY_SPEED
+            
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
@@ -141,12 +235,32 @@ class Enemy(pygame.sprite.Sprite):
         self.vel_y = 0
         self.jump_timer = 0
         self.jump_cooldown = random.randint(60, 120)
+        
+        # Air enemy specific properties
+        if self.is_air_enemy:
+            self.flight_pattern = random.choice(["horizontal", "circular", "zigzag"])
+            self.flight_timer = 0
+            self.base_y = y  # For circular and zigzag patterns
+            
         self.draw_enemy()
 
     def draw_enemy(self):
         self.image.fill((0, 0, 0, 0))
         w, h = self.image.get_size()
         colors = self.theme.get('enemy_palette', [CORAL, SOFT_PINK, DUSTY_ROSE])
+        
+        # Scale down if damaged (double-hit enemies)
+        if self.enemy_type in ["double_hit", "air_dragon"] and self.health < self.max_health:
+            scale_factor = 0.7
+            w = int(w * scale_factor)
+            h = int(h * scale_factor)
+            # Center the smaller enemy
+            offset_x = (self.image.get_width() - w) // 2
+            offset_y = (self.image.get_height() - h) // 2
+        else:
+            offset_x = 0
+            offset_y = 0
+            
         if self.enemy_type == "basic":
             # Big blobby critter - themed color
             base_c = colors[0]
@@ -176,6 +290,51 @@ class Enemy(pygame.sprite.Sprite):
             pygame.draw.circle(self.image, BLACK, (w//3, h//2), 5)
             pygame.draw.circle(self.image, BLACK, (2*w//3, h//2), 5)
             pygame.draw.line(self.image, BLACK, (w//2 - 12, h//2 + 25), (w//2 + 12, h//2 + 25), 6)
+        elif self.enemy_type == "double_hit":
+            # Double-hit enemy - armored look
+            base_c = colors[0]
+            sec_c = colors[1] if len(colors) > 1 else DUSTY_ROSE
+            # Main body
+            pygame.draw.ellipse(self.image, base_c, (6 + offset_x, 20 + offset_y, w-12, h-32))
+            pygame.draw.ellipse(self.image, sec_c, (6 + offset_x, 20 + offset_y, w-12, h-32), 4)
+            # Armor plates
+            pygame.draw.rect(self.image, DARK_GREY, (8 + offset_x, 15 + offset_y, w-16, 8))
+            pygame.draw.rect(self.image, DARK_GREY, (8 + offset_x, 35 + offset_y, w-16, 6))
+            # Eyes
+            pygame.draw.circle(self.image, colors[2%len(colors)], (w//3 + offset_x, h//2 + offset_y), 8)
+            pygame.draw.circle(self.image, colors[2%len(colors)], (2*w//3 + offset_x, h//2 + offset_y), 8)
+            pygame.draw.circle(self.image, BLACK, (w//3 + offset_x, h//2 + offset_y), 4)
+            pygame.draw.circle(self.image, BLACK, (2*w//3 + offset_x, h//2 + offset_y), 4)
+            # Angry mouth
+            pygame.draw.line(self.image, BLACK, (w//2 - 10 + offset_x, h//2 + 20 + offset_y), (w//2 + 10 + offset_x, h//2 + 20 + offset_y), 4)
+        elif self.enemy_type == "air_bat":
+            # Flying bat - dark and menacing
+            base_c = DARK_GREY
+            wing_c = BLACK
+            # Body
+            pygame.draw.ellipse(self.image, base_c, (w//2 - 4 + offset_x, h//2 - 4 + offset_y, 8, 12))
+            # Wings
+            pygame.draw.ellipse(self.image, wing_c, (2 + offset_x, h//2 - 8 + offset_y, w//2, 16))
+            pygame.draw.ellipse(self.image, wing_c, (w//2 + offset_x, h//2 - 8 + offset_y, w//2, 16))
+            # Eyes
+            pygame.draw.circle(self.image, RED, (w//2 - 2 + offset_x, h//2 - 2 + offset_y), 2)
+            pygame.draw.circle(self.image, RED, (w//2 + 2 + offset_x, h//2 - 2 + offset_y), 2)
+        elif self.enemy_type == "air_dragon":
+            # Flying dragon - more elaborate
+            base_c = colors[0]
+            wing_c = colors[1] if len(colors) > 1 else SOFT_PINK
+            # Body
+            pygame.draw.ellipse(self.image, base_c, (8 + offset_x, h//2 - 6 + offset_y, w-16, 12))
+            # Wings
+            pygame.draw.ellipse(self.image, wing_c, (4 + offset_x, h//2 - 10 + offset_y, w//2, 20))
+            pygame.draw.ellipse(self.image, wing_c, (w//2 + offset_x, h//2 - 10 + offset_y, w//2, 20))
+            # Head
+            pygame.draw.circle(self.image, base_c, (w//2 + offset_x, h//2 - 8 + offset_y), 6)
+            # Eyes
+            pygame.draw.circle(self.image, YELLOW, (w//2 - 2 + offset_x, h//2 - 10 + offset_y), 2)
+            pygame.draw.circle(self.image, YELLOW, (w//2 + 2 + offset_x, h//2 - 10 + offset_y), 2)
+            # Tail
+            pygame.draw.line(self.image, base_c, (w//2 + offset_x, h//2 + 6 + offset_y), (w//2 + offset_x, h//2 + 12 + offset_y), 3)
         else:
             base_c = colors[0]
             sec_c = colors[1] if len(colors) > 1 else LIGHT_PURPLE
@@ -191,35 +350,149 @@ class Enemy(pygame.sprite.Sprite):
         pygame.draw.ellipse(self.image, BLACK, (3*w//4 - w//6, foot_y, w//6, 8))
 
     def update(self, platforms):
-        self.vel_y += GRAVITY
-        if self.enemy_type == "jumper":
-            self.jump_timer += 1
-            if self.jump_timer >= self.jump_cooldown and self.vel_y == 0:
-                self.vel_y = JUMP_STRENGTH * 0.7
-                self.jump_timer = 0
-                self.jump_cooldown = random.randint(60, 120)
-        self.rect.x += int(self.vel_x)
-        collisions = pygame.sprite.spritecollide(self, platforms, False)
-        for platform in collisions:
-            if self.vel_x > 0:
-                self.rect.right = platform.rect.left
-                self.vel_x = -self.speed
-            elif self.vel_x < 0:
-                self.rect.left = platform.rect.right
-                self.vel_x = self.speed
-        self.rect.y += int(self.vel_y)
-        collisions = pygame.sprite.spritecollide(self, platforms, False)
-        for platform in collisions:
-            if self.vel_y > 0:
-                self.rect.bottom = platform.rect.top
-                self.vel_y = 0
-            elif self.vel_y < 0:
-                self.rect.top = platform.rect.bottom
-                self.vel_y = 0
-        if self.rect.left < 0 or self.rect.right > LEVEL_WIDTH:
-            self.vel_x *= -1
-        if self.rect.top > LEVEL_HEIGHT:
+        # Handle air enemies differently
+        if self.is_air_enemy:
+            self.update_air_enemy()
+        else:
+            # Ground enemies follow normal physics
+            self.vel_y += GRAVITY
+            if self.enemy_type == "jumper":
+                self.jump_timer += 1
+                if self.jump_timer >= self.jump_cooldown and self.vel_y == 0:
+                    self.vel_y = JUMP_STRENGTH * 0.7
+                    self.jump_timer = 0
+                    self.jump_cooldown = random.randint(60, 120)
+            
+            # Horizontal movement
+            self.rect.x += int(self.vel_x)
+            collisions = pygame.sprite.spritecollide(self, platforms, False)
+            for platform in collisions:
+                if self.vel_x > 0:
+                    self.rect.right = platform.rect.left
+                    self.vel_x = -self.speed
+                elif self.vel_x < 0:
+                    self.rect.left = platform.rect.right
+                    self.vel_x = self.speed
+            
+            # Vertical movement
+            self.rect.y += int(self.vel_y)
+            collisions = pygame.sprite.spritecollide(self, platforms, False)
+            for platform in collisions:
+                if self.vel_y > 0:
+                    self.rect.bottom = platform.rect.top
+                    self.vel_y = 0
+                elif self.vel_y < 0:
+                    self.rect.top = platform.rect.bottom
+                    self.vel_y = 0
+            
+            # Boundary checks
+            if self.rect.left < 0 or self.rect.right > LEVEL_WIDTH:
+                self.vel_x *= -1
+            if self.rect.top > LEVEL_HEIGHT:
+                self.kill()
+    
+    def update_air_enemy(self):
+        """Update air enemies with flight patterns."""
+        self.flight_timer += 1
+        
+        if self.flight_pattern == "horizontal":
+            # Simple horizontal movement
+            self.rect.x += int(self.vel_x)
+            if self.rect.left < 0 or self.rect.right > LEVEL_WIDTH:
+                self.vel_x *= -1
+                
+        elif self.flight_pattern == "circular":
+            # Circular flight pattern
+            radius = 50
+            angle = self.flight_timer * 0.05
+            self.rect.x = self.base_y + int(radius * math.cos(angle))
+            self.rect.y = self.base_y + int(radius * math.sin(angle))
+            
+        elif self.flight_pattern == "zigzag":
+            # Zigzag pattern
+            self.rect.x += int(self.vel_x)
+            self.rect.y = self.base_y + int(20 * math.sin(self.flight_timer * 0.1))
+            if self.rect.left < 0 or self.rect.right > LEVEL_WIDTH:
+                self.vel_x *= -1
+        
+        # Keep air enemies within bounds
+        if self.rect.left < 0:
+            self.rect.left = 0
+            self.vel_x = abs(self.vel_x)
+        if self.rect.right > LEVEL_WIDTH:
+            self.rect.right = LEVEL_WIDTH
+            self.vel_x = -abs(self.vel_x)
+        if self.rect.top < 0:
+            self.rect.top = 0
+        if self.rect.bottom > LEVEL_HEIGHT:
+            self.rect.bottom = LEVEL_HEIGHT
+    
+    def take_damage(self):
+        """Handle enemy taking damage."""
+        if self.health > 1:
+            self.health -= 1
+            # Redraw enemy at smaller size
+            self.draw_enemy()
+            return False  # Not dead yet
+        else:
             self.kill()
+            return True  # Enemy died
+
+
+class Checkpoint(pygame.sprite.Sprite):
+    def __init__(self, x, y, theme=None):
+        super().__init__()
+        self.theme = theme or {}
+        self.image = pygame.Surface((80, 100), pygame.SRCALPHA)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.activated = False
+        self.draw_house()
+    
+    def draw_house(self):
+        """Draw a house-shaped checkpoint."""
+        self.image.fill((0, 0, 0, 0))
+        w, h = self.image.get_size()
+        
+        # House colors
+        house_colors = self.theme.get('checkpoint_palette', [BEIGE, DARK_BROWN, SOFT_YELLOW])
+        roof_color = house_colors[1] if len(house_colors) > 1 else DARK_BROWN
+        wall_color = house_colors[0] if len(house_colors) > 0 else BEIGE
+        window_color = house_colors[2] if len(house_colors) > 2 else SOFT_YELLOW
+        
+        # House base (rectangle)
+        pygame.draw.rect(self.image, wall_color, (10, 40, w-20, h-50))
+        pygame.draw.rect(self.image, BLACK, (10, 40, w-20, h-50), 2)
+        
+        # Roof (triangle)
+        roof_points = [(5, 40), (w//2, 10), (w-5, 40)]
+        pygame.draw.polygon(self.image, roof_color, roof_points)
+        pygame.draw.polygon(self.image, BLACK, roof_points, 2)
+        
+        # Door
+        pygame.draw.rect(self.image, DARK_BROWN, (w//2-8, h-30, 16, 30))
+        pygame.draw.rect(self.image, BLACK, (w//2-8, h-30, 16, 30), 2)
+        
+        # Windows
+        pygame.draw.rect(self.image, window_color, (w//4-6, 50, 12, 12))
+        pygame.draw.rect(self.image, BLACK, (w//4-6, 50, 12, 12), 1)
+        pygame.draw.rect(self.image, window_color, (3*w//4-6, 50, 12, 12))
+        pygame.draw.rect(self.image, BLACK, (3*w//4-6, 50, 12, 12), 1)
+        
+        # Chimney
+        pygame.draw.rect(self.image, DARK_BROWN, (w-15, 20, 8, 25))
+        pygame.draw.rect(self.image, BLACK, (w-15, 20, 8, 25), 1)
+        
+        # Flag on top (indicates if activated)
+        if self.activated:
+            pygame.draw.rect(self.image, RED, (w//2-2, 5, 4, 15))
+            pygame.draw.rect(self.image, BLACK, (w//2-2, 5, 4, 15), 1)
+    
+    def activate(self):
+        """Activate the checkpoint."""
+        self.activated = True
+        self.draw_house()  # Redraw with flag
 
 
 class Platform(pygame.sprite.Sprite):
@@ -234,8 +507,151 @@ class Platform(pygame.sprite.Sprite):
         self.draw_platform(width, height)
 
     def draw_platform(self, width, height):
-        style = self.theme.get('platform_style', self.platform_type)
-        # Cloud (for sky/neon)
+        # Use theme-based styling
+        theme_name = self.theme.get('name', 'default')
+        
+        if theme_name == "The Big Melt-down":
+            self.draw_cheese_platform(width, height)
+        elif theme_name == "Moss-t Be Joking":
+            self.draw_mossy_platform(width, height)
+        elif theme_name == "Smelted Dreams":
+            self.draw_metal_platform(width, height)
+        elif theme_name == "Frost and Furious":
+            self.draw_ice_platform(width, height)
+        elif theme_name == "Boo Who?":
+            self.draw_ghost_platform(width, height)
+        elif theme_name == "404: Floor Not Found":
+            self.draw_digital_platform(width, height)
+        elif theme_name == "Pasta La Vista":
+            self.draw_pasta_platform(width, height)
+        elif theme_name == "Concrete Jungle":
+            self.draw_concrete_platform(width, height)
+        elif theme_name == "Kraken Me Up":
+            self.draw_underwater_platform(width, height)
+        else:
+            # Default platform styling
+            self.draw_default_platform(width, height)
+    
+    def draw_cheese_platform(self, width, height):
+        # Melted cheese theme
+        self.image.fill(CHEESE_YELLOW)
+        pygame.draw.rect(self.image, BURNT_ORANGE, (0, 0, width, height), 2)
+        # Cheese holes
+        for i in range(width // 20):
+            hole_x = random.randint(5, width - 10)
+            hole_y = random.randint(5, height - 10)
+            pygame.draw.circle(self.image, SOOT_GREY, (hole_x, hole_y), 3)
+        # Melted edges
+        for x in range(0, width, 15):
+            pygame.draw.arc(self.image, BURNT_ORANGE, (x, height-8, 15, 12), 0, 3.14, 2)
+    
+    def draw_mossy_platform(self, width, height):
+        # Mossy boulder theme
+        self.image.fill(MOSS_GREEN)
+        pygame.draw.rect(self.image, DARK_BROWN, (0, 0, width, height), 2)
+        # Moss patches
+        for i in range(width // 15):
+            moss_x = random.randint(2, width - 8)
+            moss_y = random.randint(2, height - 8)
+            pygame.draw.ellipse(self.image, SAGE_GREEN, (moss_x, moss_y, 6, 4))
+        # Rock texture
+        for x in range(0, width, 8):
+            for y in range(0, height, 6):
+                if random.random() < 0.3:
+                    pygame.draw.circle(self.image, WET_ROCK_GREY, (x + 4, y + 3), 2)
+    
+    def draw_metal_platform(self, width, height):
+        # Metal beam theme
+        self.image.fill(STEEL_GREY)
+        pygame.draw.rect(self.image, DARK_GREY, (0, 0, width, height), 2)
+        # Metal rivets
+        for x in range(10, width, 20):
+            pygame.draw.circle(self.image, SILVER, (x, height//2), 3)
+            pygame.draw.circle(self.image, BLACK, (x, height//2), 1)
+        # Weld marks
+        for i in range(width // 25):
+            weld_x = random.randint(5, width - 5)
+            pygame.draw.line(self.image, MOLTEN_ORANGE, (weld_x, 0), (weld_x, height), 2)
+    
+    def draw_ice_platform(self, width, height):
+        # Ice platform theme
+        self.image.fill(ICE_BLUE)
+        pygame.draw.rect(self.image, SNOW_WHITE, (0, 0, width, height), 2)
+        # Ice crystals
+        for x in range(0, width, 12):
+            for y in range(0, height, 8):
+                if random.random() < 0.4:
+                    pygame.draw.circle(self.image, SNOW_WHITE, (x + 6, y + 4), 2)
+        # Frost lines
+        for i in range(width // 15):
+            frost_x = random.randint(0, width)
+            pygame.draw.line(self.image, SNOW_WHITE, (frost_x, 0), (frost_x + random.randint(-3, 3), height), 1)
+    
+    def draw_ghost_platform(self, width, height):
+        # Spectral platform theme
+        self.image.fill((0, 0, 0, 0))  # Transparent
+        pygame.draw.ellipse(self.image, ECTOPLASM_GREEN, (0, height//3, width, height//2))
+        # Ghostly glow
+        for x in range(0, width, width//4):
+            pygame.draw.circle(self.image, GHOSTLY_WHITE, (x + width//8, height//2), height//3)
+        pygame.draw.ellipse(self.image, SHADOW_GREY, (2, height//3 + 2, width-4, height//2 - 4))
+    
+    def draw_digital_platform(self, width, height):
+        # Digital/glitch theme
+        self.image.fill(BLACK)
+        pygame.draw.rect(self.image, GLITCH_GREEN, (0, 0, width, height), 2)
+        # Digital grid
+        for x in range(0, width, 8):
+            pygame.draw.line(self.image, GLITCH_GREEN, (x, 0), (x, height), 1)
+        for y in range(0, height, 8):
+            pygame.draw.line(self.image, GLITCH_GREEN, (0, y), (width, y), 1)
+        # Glitch effects
+        for i in range(width // 20):
+            glitch_x = random.randint(0, width - 5)
+            glitch_y = random.randint(0, height - 5)
+            pygame.draw.rect(self.image, ERROR_RED, (glitch_x, glitch_y, 4, 4))
+    
+    def draw_pasta_platform(self, width, height):
+        # Pasta theme
+        self.image.fill(MOZZARELLA_WHITE)
+        pygame.draw.rect(self.image, TOMATO_RED, (0, 0, width, height), 2)
+        # Pasta strands
+        for i in range(width // 10):
+            strand_x = random.randint(0, width)
+            strand_y = random.randint(0, height)
+            pygame.draw.line(self.image, BASIL_GREEN, (strand_x, strand_y), (strand_x + random.randint(-5, 5), strand_y + random.randint(-3, 3)), 2)
+        # Meatball
+        if width > 30:
+            pygame.draw.circle(self.image, TOMATO_RED, (width//2, height//2), 8)
+    
+    def draw_concrete_platform(self, width, height):
+        # Concrete with vines theme
+        self.image.fill(CONCRETE_GREY)
+        pygame.draw.rect(self.image, DARK_GREY, (0, 0, width, height), 2)
+        # Cracks
+        for i in range(width // 20):
+            crack_x = random.randint(0, width)
+            pygame.draw.line(self.image, DARK_GREY, (crack_x, 0), (crack_x + random.randint(-2, 2), height), 1)
+        # Ivy vines
+        for x in range(0, width, 15):
+            pygame.draw.line(self.image, IVY_GREEN, (x, 0), (x + random.randint(-3, 3), height), 3)
+    
+    def draw_underwater_platform(self, width, height):
+        # Underwater/sunken ship theme
+        self.image.fill(DEEP_SEA_BLUE)
+        pygame.draw.rect(self.image, DARK_BLUE, (0, 0, width, height), 2)
+        # Barnacles
+        for i in range(width // 12):
+            barnacle_x = random.randint(2, width - 6)
+            barnacle_y = random.randint(2, height - 6)
+            pygame.draw.circle(self.image, DARK_BROWN, (barnacle_x, barnacle_y), 3)
+        # Seaweed
+        for x in range(0, width, 20):
+            pygame.draw.line(self.image, SEAWEED_GREEN, (x, height), (x + random.randint(-2, 2), height - random.randint(5, 15)), 2)
+    
+    def draw_default_platform(self, width, height):
+        # Original default platform styling
+        style = self.platform_type
         if style == "cloud":
             self.image.fill((0, 0, 0, 0))
             pygame.draw.ellipse(self.image, WHITE, (0, height//3, width, height//2))
