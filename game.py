@@ -66,6 +66,17 @@ class Game:
         generator = SmartLevelGenerator(level_def["width"], level_def["height"], level_def["difficulty"])
         platform_data = generator.generate_accessible_platforms()
         
+        # Validate accessibility and add fixes if needed
+        is_accessible = generator.validate_platform_accessibility()
+        if not is_accessible:
+            print(f"Level {self.current_level + 1}: Adding accessibility fixes...")
+            generator.add_accessibility_fixes()
+            # Re-validate
+            generator.validate_platform_accessibility()
+        
+        # Get updated platform data after fixes
+        platform_data = generator.platforms
+        
         # Create platforms from generated data
         for platform_info in platform_data:
             platform = Platform(
@@ -76,6 +87,9 @@ class Game:
             )
             self.platforms.add(platform)
             self.all_sprites.add(platform)
+        
+        # Get enemy stepping stones from generator
+        stepping_stone_enemies = generator.get_enemy_stepping_stones()
 
         # Generate checkpoints (houses) at regular intervals
         checkpoint_count = 3  # 3 checkpoints per level
@@ -90,7 +104,12 @@ class Game:
             self.all_sprites.add(checkpoint)
 
         enemy_data = []
-        # Include new enemy types
+        
+        # First, add stepping stone enemies from generator
+        for enemy_info in stepping_stone_enemies:
+            enemy_data.append((enemy_info['x'], enemy_info['y'], enemy_info['type']))
+        
+        # Then add regular enemies
         enemy_kinds = ["basic", "fast", "jumper", "big", "double_hit", "air_bat", "air_dragon"]
         enemy_count = 8 + level_def["difficulty"] * 2
         rng = random.Random(9000 + self.current_level)
@@ -107,17 +126,37 @@ class Game:
                      2 + level_def["difficulty"], 1 + level_def["difficulty"]//3, 1 + level_def["difficulty"]//4]
             etype = rng.choices(enemy_kinds, weights=weights)[0]
             enemy_data.append((x, y, etype))
+        
+        # Create all enemies
         for x, y, etype in enemy_data:
             enemy = Enemy(x, y, etype, theme=self.theme)
             self.enemies.add(enemy)
             self.all_sprites.add(enemy)
 
+        # Place powerups on or near platforms for accessibility
         powerup_positions = []
         rng = random.Random(777 + self.current_level)
-        for s in range(2, 9):
-            x = s * (level_def["width"] // 10) + rng.randint(-60, 60)
-            y = rng.randint(260, 420)
-            powerup_positions.append((x, y))
+        
+        # Get non-ground platforms for powerup placement
+        floating_platforms = [p for p in platform_data if p['type'] != 'ground']
+        
+        if floating_platforms:
+            # Place powerups on random platforms
+            num_powerups = min(7, len(floating_platforms))
+            selected_platforms = rng.sample(floating_platforms, num_powerups)
+            
+            for platform_info in selected_platforms:
+                # Place powerup slightly above the platform
+                x = platform_info['x'] + platform_info['width'] // 2
+                y = platform_info['y'] - 30
+                powerup_positions.append((x, y))
+        else:
+            # Fallback to random positions if no floating platforms
+            for s in range(2, 9):
+                x = s * (level_def["width"] // 10) + rng.randint(-60, 60)
+                y = rng.randint(260, 420)
+                powerup_positions.append((x, y))
+        
         for x, y in powerup_positions:
             powerup = Powerup(x, y)
             self.powerups.add(powerup)
@@ -133,12 +172,9 @@ class Game:
             self.obstacles.add(obstacle)
             self.all_sprites.add(obstacle)
 
-        # Create one star powerup in a hard-to-reach location
-        rng = random.Random(888 + self.current_level)
-        # Place star in the latter half of the level, high up
-        star_x = rng.randint(level_def["width"] // 2, level_def["width"] - 400)
-        star_y = rng.randint(80, 200)  # High in the air, requiring jumping to reach
-        star_powerup = StarPowerup(star_x, star_y)
+        # Create one star powerup in an accessible but challenging location
+        star_pos = generator.find_accessible_star_position()
+        star_powerup = StarPowerup(star_pos['x'], star_pos['y'])
         self.star_powerups.add(star_powerup)
         self.all_sprites.add(star_powerup)
 
