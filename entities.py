@@ -36,6 +36,12 @@ class Player(pygame.sprite.Sprite):
         self.is_dying = False
         self.death_timer = 0
         
+        # Star powerup state
+        self.star_active = False
+        self.star_timer = 0
+        self.star_duration = 600  # 10 seconds at 60 FPS
+        self.glow_pulse = 0
+        
         # Set initial animation
         self.sprite_animator.set_animation("idle", self.facing_right)
     
@@ -51,22 +57,75 @@ class Player(pygame.sprite.Sprite):
         self.death_timer = 0
         self.animation_state = "idle"
         self.sprite_animator.set_animation("idle", self.facing_right)
+        # Keep star powerup active through respawn
+    
+    def activate_star_powerup(self):
+        """Activate the star powerup effect."""
+        self.star_active = True
+        self.star_timer = self.star_duration
+        if self.sound_manager:
+            self.sound_manager.play('coin')  # Use coin sound for powerup
 
     def draw_character(self):
         """Update the character sprite using the sprite animator."""
         # Update the sprite animator
         self.sprite_animator.update()
         
-        # Get the current sprite and update the image
-        self.image = self.sprite_animator.get_current_sprite()
+        # Get the current sprite
+        base_sprite = self.sprite_animator.get_current_sprite()
         
-        # Update the rect size to match the new sprite
-        old_center = self.rect.center
-        self.rect = self.image.get_rect()
-        self.rect.center = old_center
+        # If star is active, add glow effect
+        if self.star_active:
+            # Create a larger surface for the glow
+            glow_size = 20
+            glow_surface = pygame.Surface((base_sprite.get_width() + glow_size * 2, 
+                                          base_sprite.get_height() + glow_size * 2), 
+                                         pygame.SRCALPHA)
+            
+            # Draw multiple glow layers
+            self.glow_pulse += 0.2
+            pulse_intensity = abs(math.sin(self.glow_pulse))
+            
+            for i in range(5, 0, -1):
+                glow_layer = pygame.Surface((base_sprite.get_width() + i * 4, 
+                                            base_sprite.get_height() + i * 4), 
+                                           pygame.SRCALPHA)
+                alpha = int(30 * pulse_intensity * (i / 5))
+                # Draw glow in soft yellow
+                pygame.draw.rect(glow_layer, (*SOFT_YELLOW[:3], alpha), glow_layer.get_rect(), border_radius=10)
+                glow_surface.blit(glow_layer, (glow_size - i * 2, glow_size - i * 2))
+            
+            # Draw the base sprite on top of the glow
+            glow_surface.blit(base_sprite, (glow_size, glow_size))
+            
+            # Add sparkles around the character
+            for _ in range(3):
+                sparkle_x = glow_size + random.randint(0, base_sprite.get_width())
+                sparkle_y = glow_size + random.randint(0, base_sprite.get_height())
+                sparkle_size = random.randint(2, 4)
+                pygame.draw.circle(glow_surface, WHITE, (sparkle_x, sparkle_y), sparkle_size)
+            
+            self.image = glow_surface
+            # Adjust rect to account for glow
+            old_center = self.rect.center
+            self.rect = self.image.get_rect()
+            self.rect.center = old_center
+        else:
+            # Normal sprite without glow
+            self.image = base_sprite
+            old_center = self.rect.center
+            self.rect = self.image.get_rect()
+            self.rect.center = old_center
     
 
     def update(self, platforms, enemies, powerups, obstacles, camera_x):
+        # Update star powerup timer
+        if self.star_active:
+            self.star_timer -= 1
+            if self.star_timer <= 0:
+                self.star_active = False
+                self.star_timer = 0
+        
         # Handle death animation
         if self.is_dying:
             self.death_timer += 1
@@ -81,6 +140,10 @@ class Player(pygame.sprite.Sprite):
         self.vel_x = 0
         old_facing = self.facing_right
         
+        # Calculate speed and jump based on star powerup
+        current_speed = PLAYER_SPEED * 1.5 if self.star_active else PLAYER_SPEED
+        current_jump = JUMP_STRENGTH * 1.3 if self.star_active else JUMP_STRENGTH
+        
         # Determine animation state based on movement and physics
         if self.vel_y < -2:  # Jumping up
             self.animation_state = "jumping"
@@ -92,17 +155,17 @@ class Player(pygame.sprite.Sprite):
             self.animation_state = "idle"
         
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            self.vel_x = -PLAYER_SPEED
+            self.vel_x = -current_speed
             self.facing_right = False
         if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            self.vel_x = PLAYER_SPEED
+            self.vel_x = current_speed
             self.facing_right = True
         
         # Update sprite animator with current state
         self.sprite_animator.set_animation(self.animation_state, self.facing_right)
         
         if (keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]) and self.on_ground:
-            self.vel_y = JUMP_STRENGTH
+            self.vel_y = current_jump
             self.on_ground = False
             self.animation_state = "jumping"
             self.sprite_animator.set_animation("jumping", self.facing_right)
@@ -140,13 +203,19 @@ class Player(pygame.sprite.Sprite):
             return None
         enemy_collisions = pygame.sprite.spritecollide(self, enemies, False)
         for enemy in enemy_collisions:
+            # If star is active, kill enemies on any touch
+            if self.star_active:
+                enemy.kill()
+                if self.sound_manager:
+                    self.sound_manager.play('enemy_kill')
+                return "enemy_killed"
             # Check if player is jumping on enemy (player's bottom is above enemy's center)
-            if self.vel_y > 0 and self.rect.bottom < enemy.rect.centery:
+            elif self.vel_y > 0 and self.rect.bottom < enemy.rect.centery:
                 # Handle different enemy types
                 if enemy.enemy_type in ["double_hit", "air_dragon"] and enemy.health > 1:
                     # Multi-hit enemy - damage but don't kill
                     enemy.take_damage()
-                    self.vel_y = int(JUMP_STRENGTH * 1.15)
+                    self.vel_y = int(current_jump * 1.15)
                     self.animation_state = "stomping"
                     self.sprite_animator.set_animation("stomping", self.facing_right)
                     if self.sound_manager:
@@ -155,14 +224,14 @@ class Player(pygame.sprite.Sprite):
                 else:
                     # Single-hit enemy or final hit on multi-hit enemy
                     enemy.kill()
-                    self.vel_y = int(JUMP_STRENGTH * 1.15)
+                    self.vel_y = int(current_jump * 1.15)
                     self.animation_state = "stomping"
                     self.sprite_animator.set_animation("stomping", self.facing_right)
                     if self.sound_manager:
                         self.sound_manager.play('enemy_kill')
                     return "enemy_killed"
             else:
-                # Player got hit by enemy
+                # Player got hit by enemy (only if star is not active)
                 self.is_dying = True
                 self.animation_state = "dying"
                 self.sprite_animator.set_animation("dying", self.facing_right)
@@ -175,7 +244,8 @@ class Player(pygame.sprite.Sprite):
                 self.sound_manager.play('coin')
             return "powerup"
         obstacle_collisions = pygame.sprite.spritecollide(self, obstacles, False)
-        if obstacle_collisions:
+        if obstacle_collisions and not self.star_active:
+            # Only take damage from obstacles if star is not active
             self.is_dying = True
             self.animation_state = "dying"
             self.sprite_animator.set_animation("dying", self.facing_right)
@@ -772,6 +842,85 @@ class Powerup(pygame.sprite.Sprite):
         self.spin_angle += 5
         if self.spin_angle >= 360:
             self.spin_angle = 0
+
+
+class StarPowerup(pygame.sprite.Sprite):
+    """Special star-shaped powerup that gives temporary invincibility and power boost."""
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface((40, 40), pygame.SRCALPHA)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.float_offset = 0
+        self.original_y = y
+        self.spin_angle = 0
+        self.pulse_offset = 0
+        self.draw_star()
+
+    def draw_star(self):
+        """Draw a glowing star shape."""
+        self.image.fill((0, 0, 0, 0))
+        center_x, center_y = 20, 20
+        
+        # Calculate star points (5-pointed star)
+        outer_radius = 16 + int(2 * math.sin(self.pulse_offset))
+        inner_radius = 7 + int(1 * math.sin(self.pulse_offset))
+        
+        points = []
+        for i in range(10):
+            angle = (i * 36 - 90 + self.spin_angle) * math.pi / 180
+            if i % 2 == 0:
+                # Outer point
+                x = center_x + outer_radius * math.cos(angle)
+                y = center_y + outer_radius * math.sin(angle)
+            else:
+                # Inner point
+                x = center_x + inner_radius * math.cos(angle)
+                y = center_y + inner_radius * math.sin(angle)
+            points.append((x, y))
+        
+        # Draw glow effect (multiple layers)
+        for glow_size in [6, 4, 2]:
+            glow_surface = pygame.Surface((40, 40), pygame.SRCALPHA)
+            glow_points = []
+            for i in range(10):
+                angle = (i * 36 - 90 + self.spin_angle) * math.pi / 180
+                if i % 2 == 0:
+                    radius = outer_radius + glow_size
+                else:
+                    radius = inner_radius + glow_size
+                x = center_x + radius * math.cos(angle)
+                y = center_y + radius * math.sin(angle)
+                glow_points.append((x, y))
+            
+            alpha = 50 - (glow_size * 8)
+            glow_color = (*SOFT_YELLOW[:3], alpha)
+            pygame.draw.polygon(glow_surface, glow_color, glow_points)
+            self.image.blit(glow_surface, (0, 0))
+        
+        # Draw main star
+        pygame.draw.polygon(self.image, SOFT_YELLOW, points)
+        pygame.draw.polygon(self.image, WHITE, points, 2)
+        
+        # Add sparkle in center
+        pygame.draw.circle(self.image, WHITE, (center_x, center_y), 4)
+        pygame.draw.circle(self.image, SOFT_YELLOW, (center_x, center_y), 2)
+
+    def update(self):
+        """Animate the star powerup with floating, spinning, and pulsing."""
+        self.float_offset += 0.1
+        float_y = int(5 * math.sin(self.float_offset))
+        self.rect.y = self.original_y + float_y
+        
+        self.spin_angle += 3
+        if self.spin_angle >= 360:
+            self.spin_angle = 0
+        
+        self.pulse_offset += 0.15
+        
+        # Redraw star with new animation state
+        self.draw_star()
 
 
 class Obstacle(pygame.sprite.Sprite):

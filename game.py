@@ -2,10 +2,10 @@ import pygame
 import sys
 import random
 import constants as const
-from constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, WHITE, BLACK, SOFT_PINK, MINT_GREEN, SOFT_YELLOW, PEACH, CORAL, LIGHT_PURPLE, GameState, set_level_dimensions
+from constants import SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_WIDTH, FULLSCREEN_HEIGHT, FPS, WHITE, BLACK, SOFT_PINK, MINT_GREEN, SOFT_YELLOW, PEACH, CORAL, LIGHT_PURPLE, GameState, set_level_dimensions
 from audio import SoundManager
 from camera import Camera
-from entities import Player, Enemy, Platform, Powerup, Obstacle, Checkpoint
+from entities import Player, Enemy, Platform, Powerup, Obstacle, Checkpoint, StarPowerup
 from background import Background
 from ui import UI
 from levels import generate_levels
@@ -38,6 +38,7 @@ class Game:
         self.platforms = pygame.sprite.Group()
         self.enemies = pygame.sprite.Group()
         self.powerups = pygame.sprite.Group()
+        self.star_powerups = pygame.sprite.Group()
         self.plants = pygame.sprite.Group()
         self.obstacles = pygame.sprite.Group()
         self.checkpoints = pygame.sprite.Group()
@@ -132,6 +133,15 @@ class Game:
             self.obstacles.add(obstacle)
             self.all_sprites.add(obstacle)
 
+        # Create one star powerup in a hard-to-reach location
+        rng = random.Random(888 + self.current_level)
+        # Place star in the latter half of the level, high up
+        star_x = rng.randint(level_def["width"] // 2, level_def["width"] - 400)
+        star_y = rng.randint(80, 200)  # High in the air, requiring jumping to reach
+        star_powerup = StarPowerup(star_x, star_y)
+        self.star_powerups.add(star_powerup)
+        self.all_sprites.add(star_powerup)
+
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -199,8 +209,11 @@ class Game:
         self.platforms.empty()
         self.enemies.empty()
         self.powerups.empty()
+        self.star_powerups.empty()
         self.plants.empty()
         self.obstacles.empty()
+        self.checkpoints.empty()
+        self.last_checkpoint = None
         self.create_level()
         self.player = Player(100, 400, self.sound_manager)
         self.all_sprites.add(self.player)
@@ -215,8 +228,11 @@ class Game:
             self.platforms.empty()
             self.enemies.empty()
             self.powerups.empty()
+            self.star_powerups.empty()
             self.plants.empty()
             self.obstacles.empty()
+            self.checkpoints.empty()
+            self.last_checkpoint = None
             self.create_level()
             self.player = Player(100, 400, self.sound_manager)
             self.all_sprites.add(self.player)
@@ -236,8 +252,11 @@ class Game:
         self.platforms.empty()
         self.enemies.empty()
         self.powerups.empty()
+        self.star_powerups.empty()
         self.plants.empty()
         self.obstacles.empty()
+        self.checkpoints.empty()
+        self.last_checkpoint = None
         self.create_level()
         self.player = Player(100, 400, self.sound_manager)
         self.all_sprites.add(self.player)
@@ -257,6 +276,12 @@ class Game:
                     self.last_checkpoint = checkpoint
                     if self.sound_manager:
                         self.sound_manager.play('coin')  # Use coin sound for checkpoint activation
+            
+            # Check for star powerup collisions
+            star_collisions = pygame.sprite.spritecollide(self.player, self.star_powerups, True)
+            if star_collisions:
+                self.player.activate_star_powerup()
+                self.score += 500  # Bonus score for star powerup
             
             if result == "death" or result == "hit":
                 self.lives -= 1
@@ -282,6 +307,7 @@ class Game:
                 self.state = GameState.LEVEL_COMPLETE
             self.enemies.update(self.platforms)
             self.powerups.update()
+            self.star_powerups.update()
             self.platforms.update()
 
     def _add_difficulty_enemies(self):
@@ -351,6 +377,58 @@ class Game:
         pygame.draw.rect(self.screen, BLACK, panel_rect, 2)
         self.ui.draw_bubble_text(self.screen, f"Score: {self.score}", panel_rect.left + 10, panel_rect.centery, center=False, size=28)
         self.ui.draw_bubble_text(self.screen, f"Level: {self.current_level + 1}/{len(self.levels)}", 10, 94, center=False, size=28)
+        
+        # Draw star powerup timer if active
+        if self.player.star_active:
+            # Draw star powerup indicator
+            star_panel_rect = pygame.Rect(SCREEN_WIDTH - 210, 10, 200, 60)
+            pygame.draw.rect(self.screen, SOFT_YELLOW, star_panel_rect)
+            pygame.draw.rect(self.screen, BLACK, star_panel_rect, 3)
+            
+            # Draw star icon
+            import math
+            star_center_x = SCREEN_WIDTH - 180
+            star_center_y = 30
+            star_points = []
+            for i in range(10):
+                angle = (i * 36 - 90) * math.pi / 180
+                if i % 2 == 0:
+                    radius = 12
+                else:
+                    radius = 5
+                x = star_center_x + radius * math.cos(angle)
+                y = star_center_y + radius * math.sin(angle)
+                star_points.append((x, y))
+            pygame.draw.polygon(self.screen, WHITE, star_points)
+            pygame.draw.polygon(self.screen, BLACK, star_points, 2)
+            
+            # Draw timer bar
+            timer_width = 140
+            timer_height = 15
+            timer_x = SCREEN_WIDTH - 200
+            timer_y = 48
+            
+            # Background bar
+            pygame.draw.rect(self.screen, BLACK, (timer_x, timer_y, timer_width, timer_height))
+            
+            # Progress bar
+            progress = self.player.star_timer / self.player.star_duration
+            progress_width = int(timer_width * progress)
+            
+            # Color gradient from green to yellow to red based on time remaining
+            if progress > 0.5:
+                bar_color = MINT_GREEN
+            elif progress > 0.25:
+                bar_color = SOFT_YELLOW
+            else:
+                bar_color = CORAL
+            
+            pygame.draw.rect(self.screen, bar_color, (timer_x, timer_y, progress_width, timer_height))
+            pygame.draw.rect(self.screen, BLACK, (timer_x, timer_y, timer_width, timer_height), 2)
+            
+            # Draw time remaining text
+            seconds_remaining = int(self.player.star_timer / 60) + 1
+            self.ui.draw_bubble_text(self.screen, f"{seconds_remaining}s", SCREEN_WIDTH - 130, 30, center=False, size=24)
 
     def _draw_level_complete(self):
         self.bg.draw(self.screen, self.current_level)
