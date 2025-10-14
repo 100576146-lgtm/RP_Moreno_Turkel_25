@@ -1,6 +1,9 @@
 import constants as const
 import random
 from typing import List, Dict, Any
+import importlib
+import os
+import sys
 
 # --- Themes updated to include specific texture/asset filenames ---
 LEVEL_THEMES: List[Dict[str, Any]] = [
@@ -108,4 +111,40 @@ def generate_levels(num_levels: int = 10) -> List[Dict[str, Any]]:
             "theme": theme
         })
 
+    return levels
+
+
+def load_levels() -> List[Dict[str, Any]]:
+    """Load level definitions from files in level_defs/ directory.
+    Each file must define LEVEL_DEF dict with keys: width,height,difficulty,theme.
+    Falls back to generate_levels() if directory or modules are missing.
+    """
+    root = os.path.dirname(os.path.abspath(__file__))
+    defs_dir = os.path.join(root, "level_defs")
+    if not os.path.isdir(defs_dir):
+        return generate_levels()
+    # Ensure package path
+    if root not in sys.path:
+        sys.path.append(root)
+    package_name = "level_defs"
+    try:
+        importlib.import_module(package_name)
+    except Exception:
+        # Create package dynamically not required; rely on presence of __init__.py
+        pass
+    # Collect level_*.py modules in sorted order
+    files = [f for f in os.listdir(defs_dir) if f.startswith("level_") and f.endswith(".py")]
+    files.sort()
+    levels: List[Dict[str, Any]] = []
+    for fname in files:
+        mod_name = f"{package_name}.{fname[:-3]}"
+        try:
+            mod = importlib.import_module(mod_name)
+            level_def = getattr(mod, "LEVEL_DEF", None)
+            if isinstance(level_def, dict):
+                levels.append(level_def)
+        except Exception as e:
+            print(f"Failed to load level from {mod_name}: {e}")
+    if not levels:
+        return generate_levels()
     return levels

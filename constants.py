@@ -149,13 +149,14 @@ PLAYER_SPEED = 5
 MAX_JUMP_HEIGHT = int((JUMP_STRENGTH * JUMP_STRENGTH) / (2 * GRAVITY))
 # Add some buffer for safety
 SAFE_JUMP_HEIGHT = MAX_JUMP_HEIGHT + 20
-ENEMY_SPEED = 2
+ENEMY_SPEED = 1.6
 
 # Level dimensions (mutable; set per-level)
 LEVEL_WIDTH = 6400  # Doubled the level width
 LEVEL_HEIGHT = 600  # Match screen height for full visibility
 
 class GameState(Enum):
+    LOADING = 0
     MENU = 1
     PLAYING = 2
     GAME_OVER = 3

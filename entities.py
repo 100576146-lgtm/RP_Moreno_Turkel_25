@@ -245,13 +245,49 @@ class Player(pygame.sprite.Sprite):
             return "powerup"
         obstacle_collisions = pygame.sprite.spritecollide(self, obstacles, False)
         if obstacle_collisions and not self.star_active:
-            # Only take damage from obstacles if star is not active
-            self.is_dying = True
-            self.animation_state = "dying"
-            self.sprite_animator.set_animation("dying", self.facing_right)
-            if self.sound_manager:
-                self.sound_manager.play('hit')
-            return "hit"
+            # Special handling for sticky cheese globs
+            hit = obstacle_collisions[0]
+            if getattr(hit, 'obstacle_type', '') == 'cheese_glob':
+                # Stick the player in place for ~2 seconds (120 frames)
+                if not hasattr(self, 'stuck_timer') or self.stuck_timer <= 0:
+                    self.stuck_timer = 120
+                # While stuck: zero velocity and prevent jumping
+                self.vel_x = 0
+                self.vel_y = 0
+                self.on_ground = True
+                self.animation_state = "idle"
+                self.sprite_animator.set_animation("idle", self.facing_right)
+                self.stuck_timer -= 1
+                # Slight visual sink into glob
+                self.rect.bottom = hit.rect.top + 6
+                # No damage result; allow game to continue
+                self.draw_character()
+                return None
+            elif getattr(hit, 'obstacle_type', '') in ('jungle_plant', 'rock'):
+                # Jungle plant or rock: block movement without damage
+                if self.vel_x > 0:
+                    self.rect.right = hit.rect.left
+                elif self.vel_x < 0:
+                    self.rect.left = hit.rect.right
+                self.vel_x = 0
+                self.draw_character()
+                return None
+            elif getattr(hit, 'obstacle_type', '') == 'lava_pit':
+                # Lava pit: instant damage
+                self.is_dying = True
+                self.animation_state = "dying"
+                self.sprite_animator.set_animation("dying", self.facing_right)
+                if self.sound_manager:
+                    self.sound_manager.play('hit')
+                return "hit"
+            else:
+                # Only take damage from other obstacles if star is not active
+                self.is_dying = True
+                self.animation_state = "dying"
+                self.sprite_animator.set_animation("dying", self.facing_right)
+                if self.sound_manager:
+                    self.sound_manager.play('hit')
+                return "hit"
         
         # Update character drawing with current animation state
         self.draw_character()
@@ -521,43 +557,121 @@ class Checkpoint(pygame.sprite.Sprite):
         self.draw_house()
     
     def draw_house(self):
-        """Draw a house-shaped checkpoint."""
+        """Draw checkpoint. If theme is cheese, draw a cheese wheel."""
         self.image.fill((0, 0, 0, 0))
         w, h = self.image.get_size()
-        
-        # House colors
-        house_colors = self.theme.get('checkpoint_palette', [BEIGE, DARK_BROWN, SOFT_YELLOW])
-        roof_color = house_colors[1] if len(house_colors) > 1 else DARK_BROWN
-        wall_color = house_colors[0] if len(house_colors) > 0 else BEIGE
-        window_color = house_colors[2] if len(house_colors) > 2 else SOFT_YELLOW
-        
-        # House base (rectangle)
-        pygame.draw.rect(self.image, wall_color, (10, 40, w-20, h-50))
-        pygame.draw.rect(self.image, BLACK, (10, 40, w-20, h-50), 2)
-        
-        # Roof (triangle)
-        roof_points = [(5, 40), (w//2, 10), (w-5, 40)]
-        pygame.draw.polygon(self.image, roof_color, roof_points)
-        pygame.draw.polygon(self.image, BLACK, roof_points, 2)
-        
-        # Door
-        pygame.draw.rect(self.image, DARK_BROWN, (w//2-8, h-30, 16, 30))
-        pygame.draw.rect(self.image, BLACK, (w//2-8, h-30, 16, 30), 2)
-        
-        # Windows
-        pygame.draw.rect(self.image, window_color, (w//4-6, 50, 12, 12))
-        pygame.draw.rect(self.image, BLACK, (w//4-6, 50, 12, 12), 1)
-        pygame.draw.rect(self.image, window_color, (3*w//4-6, 50, 12, 12))
-        pygame.draw.rect(self.image, BLACK, (3*w//4-6, 50, 12, 12), 1)
-        
-        # Chimney
-        pygame.draw.rect(self.image, DARK_BROWN, (w-15, 20, 8, 25))
-        pygame.draw.rect(self.image, BLACK, (w-15, 20, 8, 25), 1)
-        
-        # Flag on top (indicates if activated)
-        if self.activated:
-            pygame.draw.rect(self.image, RED, (w//2-2, 5, 4, 15))
-            pygame.draw.rect(self.image, BLACK, (w//2-2, 5, 4, 15), 1)
+        theme_name = self.theme.get('name', '')
+        if theme_name == "The Big Melt-down":
+            # Draw a cheese wheel checkpoint
+            cx, cy = w//2, h//2 + 10
+            radius = min(w, h)//2 - 10
+            body = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.circle(body, CHEESE_YELLOW, (cx, cy), radius)
+            pygame.draw.circle(body, BURNT_ORANGE, (cx, cy), radius, 4)
+            # Wedge cut
+            pygame.draw.polygon(body, (0,0,0,0), [(cx, cy), (cx+radius, cy-10), (cx+radius, cy+10)])
+            # Cheese holes
+            for _ in range(8):
+                import random
+                r = random.randint(4, 8)
+                ox = random.randint(cx - radius + 10, cx + radius - 10)
+                oy = random.randint(cy - radius + 10, cy + radius - 10)
+                pygame.draw.circle(body, SOOT_GREY, (ox, oy), r)
+            self.image.blit(body, (0,0))
+            # Small flag to indicate activation
+            if self.activated:
+                pygame.draw.rect(self.image, RED, (cx-2, cy - radius - 12, 4, 12))
+                pygame.draw.polygon(self.image, SOFT_YELLOW, [(cx+2, cy - radius - 12), (cx+18, cy - radius - 6), (cx+2, cy - radius)])
+                pygame.draw.rect(self.image, BLACK, (cx-2, cy - radius - 12, 4, 12), 1)
+        elif theme_name == "Moss-t Be Joking":
+            # Draw a palm tree checkpoint
+            trunk_x = w//2 - 6
+            pygame.draw.rect(self.image, DARK_BROWN, (trunk_x, h-60, 12, 60))
+            pygame.draw.rect(self.image, BLACK, (trunk_x, h-60, 12, 60), 1)
+            # Leaves (big palm fronds)
+            center = (w//2, h-60)
+            for angle in (-50, -20, 10, 40, 70):
+                leaf = pygame.Surface((60, 28), pygame.SRCALPHA)
+                pygame.draw.ellipse(leaf, SAGE_GREEN, (0, 0, 60, 28))
+                pygame.draw.ellipse(leaf, MOSS_GREEN, (0, 0, 60, 28), 3)
+                rot = pygame.transform.rotate(leaf, angle)
+                self.image.blit(rot, (center[0] - rot.get_width()//2, center[1] - rot.get_height()//2))
+            # Activation coconuts
+            if self.activated:
+                pygame.draw.circle(self.image, DARK_BROWN, (w//2 - 10, h-50), 5)
+                pygame.draw.circle(self.image, DARK_BROWN, (w//2 + 10, h-48), 5)
+        elif theme_name == "Smelted Dreams":
+            # Draw a stone/metal archway as checkpoint
+            arch = pygame.Surface((w, h), pygame.SRCALPHA)
+            base_rect = pygame.Rect(10, h-40, w-20, 30)
+            pygame.draw.rect(arch, DARK_GREY, base_rect)
+            pygame.draw.rect(arch, BLACK, base_rect, 2)
+            # Arch top
+            pygame.draw.arc(arch, STEEL_GREY, (10, 10, w-20, h-20), 3.14, 0, 8)
+            pygame.draw.arc(arch, BLACK, (10, 10, w-20, h-20), 3.14, 0, 2)
+            # Molten glow accents
+            pygame.draw.arc(arch, MOLTEN_ORANGE, (14, 14, w-28, h-28), 3.14, 0, 3)
+            self.image.blit(arch, (0, 0))
+            if self.activated:
+                # Small torch flames on sides when activated
+                pygame.draw.polygon(self.image, (255,120,0), [(16, h-50), (20, h-70), (24, h-50)])
+                pygame.draw.polygon(self.image, (255,200,60), [(18, h-50), (20, h-62), (22, h-50)])
+                pygame.draw.polygon(self.image, (255,120,0), [(w-24, h-50), (w-20, h-70), (w-16, h-50)])
+                pygame.draw.polygon(self.image, (255,200,60), [(w-22, h-50), (w-20, h-62), (w-18, h-50)])
+        elif theme_name == "Frost and Furious":
+            # Draw an igloo checkpoint
+            igloo = pygame.Surface((w, h), pygame.SRCALPHA)
+            cx, cy = w//2, h-30
+            radius = 34
+            # Dome
+            pygame.draw.circle(igloo, ICE_BLUE, (cx, cy), radius)
+            pygame.draw.circle(igloo, SNOW_WHITE, (cx, cy), radius, 3)
+            pygame.draw.rect(igloo, (0,0,0,0), (0, cy, w, h-cy))  # cut the bottom
+            # Entrance
+            pygame.draw.ellipse(igloo, DARK_BLUE, (cx-14, cy-6, 28, 22))
+            pygame.draw.ellipse(igloo, BLACK, (cx-14, cy-6, 28, 22), 2)
+            # Ice bricks lines
+            for yline in range(cy-24, cy+2, 8):
+                pygame.draw.line(igloo, SNOW_WHITE, (cx-24, yline), (cx+24, yline), 2)
+            self.image.blit(igloo, (0, 0))
+            if self.activated:
+                # Snow sparkle on top when activated
+                pygame.draw.circle(self.image, SNOW_WHITE, (cx, cy - radius - 2), 4)
+        else:
+            
+            # House colors
+            house_colors = self.theme.get('checkpoint_palette', [BEIGE, DARK_BROWN, SOFT_YELLOW])
+            roof_color = house_colors[1] if len(house_colors) > 1 else DARK_BROWN
+            wall_color = house_colors[0] if len(house_colors) > 0 else BEIGE
+            window_color = house_colors[2] if len(house_colors) > 2 else SOFT_YELLOW
+            
+            # House base (rectangle)
+            pygame.draw.rect(self.image, wall_color, (10, 40, w-20, h-50))
+            pygame.draw.rect(self.image, BLACK, (10, 40, w-20, h-50), 2)
+            
+            # Roof (triangle)
+            roof_points = [(5, 40), (w//2, 10), (w-5, 40)]
+            pygame.draw.polygon(self.image, roof_color, roof_points)
+            pygame.draw.polygon(self.image, BLACK, roof_points, 2)
+            
+            # Door
+            pygame.draw.rect(self.image, DARK_BROWN, (w//2-8, h-30, 16, 30))
+            pygame.draw.rect(self.image, BLACK, (w//2-8, h-30, 16, 30), 2)
+            
+            # Windows
+            pygame.draw.rect(self.image, window_color, (w//4-6, 50, 12, 12))
+            pygame.draw.rect(self.image, BLACK, (w//4-6, 50, 12, 12), 1)
+            pygame.draw.rect(self.image, window_color, (3*w//4-6, 50, 12, 12))
+            pygame.draw.rect(self.image, BLACK, (3*w//4-6, 50, 12, 12), 1)
+            
+            # Chimney
+            pygame.draw.rect(self.image, DARK_BROWN, (w-15, 20, 8, 25))
+            pygame.draw.rect(self.image, BLACK, (w-15, 20, 8, 25), 1)
+            
+            # Flag on top (indicates if activated)
+            if self.activated:
+                pygame.draw.rect(self.image, RED, (w//2-2, 5, 4, 15))
+                pygame.draw.rect(self.image, BLACK, (w//2-2, 5, 4, 15), 1)
     
     def activate(self):
         """Activate the checkpoint."""
@@ -586,6 +700,10 @@ class Platform(pygame.sprite.Sprite):
             self.draw_mossy_platform(width, height)
         elif theme_name == "Smelted Dreams":
             self.draw_metal_platform(width, height)
+            # Chance to overlay flames to indicate 'on fire'
+            import random
+            if random.random() < 0.35:
+                self._overlay_flames(width, height)
         elif theme_name == "Frost and Furious":
             self.draw_ice_platform(width, height)
         elif theme_name == "Boo Who?":
@@ -642,6 +760,15 @@ class Platform(pygame.sprite.Sprite):
         for i in range(width // 25):
             weld_x = random.randint(5, width - 5)
             pygame.draw.line(self.image, MOLTEN_ORANGE, (weld_x, 0), (weld_x, height), 2)
+
+    def _overlay_flames(self, width, height):
+        # Simple flame triangles along the top of platform
+        import random
+        for x in range(0, width, 12):
+            flame_h = random.randint(6, max(7, height//2))
+            points = [(x, 0), (x+6, flame_h), (x+12, 0)]
+            pygame.draw.polygon(self.image, (255, 120, 0), points)
+            pygame.draw.polygon(self.image, (255, 200, 60), [(x+3, 0), (x+6, flame_h-3), (x+9, 0)])
     
     def draw_ice_platform(self, width, height):
         # Ice platform theme
@@ -929,6 +1056,16 @@ class Obstacle(pygame.sprite.Sprite):
         self.obstacle_type = obstacle_type
         if obstacle_type == "spike":
             self.image = pygame.Surface((20, 24), pygame.SRCALPHA)
+        elif obstacle_type == "ice_spike":
+            self.image = pygame.Surface((20, 26), pygame.SRCALPHA)
+        elif obstacle_type == "jungle_plant":
+            self.image = pygame.Surface((28, 46), pygame.SRCALPHA)
+        elif obstacle_type == "rock":
+            self.image = pygame.Surface((36, 26), pygame.SRCALPHA)
+        elif obstacle_type == "cheese_glob":
+            self.image = pygame.Surface((36, 20), pygame.SRCALPHA)
+        elif obstacle_type == "lava_pit":
+            self.image = pygame.Surface((80, 16), pygame.SRCALPHA)
         else:
             self.image = pygame.Surface((40, 20), pygame.SRCALPHA)
         self.rect = self.image.get_rect()
@@ -947,5 +1084,43 @@ class Obstacle(pygame.sprite.Sprite):
             for spike in spike_points:
                 pygame.draw.polygon(self.image, DUSTY_ROSE, spike)
                 pygame.draw.polygon(self.image, BLACK, spike, 1)
+        elif self.obstacle_type == "ice_spike":
+            # Taller, blueish spikes for ice
+            spike_points = [
+                [(2, 26), (10, 2), (18, 26)],
+                [(0, 26), (6, 10), (12, 26)],
+                [(8, 26), (14, 6), (20, 26)]
+            ]
+            for spike in spike_points:
+                pygame.draw.polygon(self.image, ICE_BLUE, spike)
+                pygame.draw.polygon(self.image, SNOW_WHITE, spike, 1)
+        elif self.obstacle_type == "jungle_plant":
+            # Tall leafy plant blocking path
+            pygame.draw.ellipse(self.image, MOSS_GREEN, (4, 12, 20, 28))
+            pygame.draw.ellipse(self.image, DARK_BROWN, (4, 12, 20, 28), 3)
+            # Leaves
+            pygame.draw.ellipse(self.image, SAGE_GREEN, (0, 0, 18, 18))
+            pygame.draw.ellipse(self.image, SAGE_GREEN, (10, 0, 18, 18))
+            pygame.draw.line(self.image, DARK_BROWN, (14, 40), (14, 46), 3)
+        elif self.obstacle_type == "rock":
+            # Ground rock
+            pygame.draw.ellipse(self.image, WET_ROCK_GREY, (0, 6, 36, 20))
+            pygame.draw.ellipse(self.image, DARK_BROWN, (0, 6, 36, 20), 2)
+        elif self.obstacle_type == "cheese_glob":
+            # Draw a sticky glob of cheese
+            pygame.draw.ellipse(self.image, CHEESE_YELLOW, (0, 4, 36, 16))
+            pygame.draw.ellipse(self.image, BURNT_ORANGE, (0, 4, 36, 16), 2)
+            # Holes
+            for _ in range(3):
+                r = random.randint(2, 4)
+                x = random.randint(6, 30)
+                y = random.randint(8, 16)
+                pygame.draw.circle(self.image, SOOT_GREY, (x, y), r)
+        elif self.obstacle_type == "lava_pit":
+            # Draw a lava pit (wide, low rectangle with animated-looking waves)
+            pygame.draw.rect(self.image, (90, 20, 10), (0, 0, self.image.get_width(), self.image.get_height()))
+            for i in range(0, self.image.get_width(), 8):
+                pygame.draw.arc(self.image, (255, 100, 0), (i, 2, 12, 12), 0, 3.14, 2)
+                pygame.draw.arc(self.image, (255, 180, 60), (i+2, 6, 12, 12), 0, 3.14, 2)
 
 

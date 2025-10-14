@@ -1,5 +1,6 @@
 import pygame
 import random
+import math
 from constants import SCREEN_WIDTH, SCREEN_HEIGHT
 
 
@@ -58,6 +59,107 @@ class Background:
 
         # Draw bg motif overlay by theme
         motif = self.theme.get('bg_motif')
+        if motif == 'swiss_cheese':
+            # Swiss cheese: uniform cheese color with lots of holes
+            rng = random.Random(8888)
+            cheese_yellow = (248, 240, 202)
+            darker = (230, 210, 175)
+            # Base fill
+            screen.fill(cheese_yellow)
+            # Many holes of varying sizes
+            for _ in range(60):
+                r = rng.randint(8, 32)
+                x = rng.randint(r + 4, self.screen_width - r - 4)
+                y = rng.randint(r + 4, self.screen_height - r - 4)
+                pygame.draw.circle(screen, darker, (x, y), r)
+                # inner shading offset to suggest depth
+                pygame.draw.circle(screen, (205, 190, 155), (x + r//5, y + r//5), max(3, r//2))
+            return
+        if motif == 'jungle':
+            # Dense jungle: overlapping big leaves and vines
+            rng = random.Random(2468)
+            # Large semi-transparent leaves
+            for _ in range(18):
+                w = rng.randint(80, 160)
+                h = rng.randint(40, 90)
+                x = rng.randint(-30, self.screen_width - 50)
+                y = rng.randint(0, self.screen_height - 60)
+                leaf = pygame.Surface((w, h), pygame.SRCALPHA)
+                col = rng.choice([(60, 120, 70, 180), (50, 100, 60, 180), (80, 140, 90, 160)])
+                pygame.draw.ellipse(leaf, col, (0, 0, w, h))
+                pygame.draw.ellipse(leaf, (30, 70, 40, 200), (0, 0, w, h), 3)
+                screen.blit(leaf, (x, y))
+            # Hanging vines
+            for _ in range(8):
+                x = rng.randint(40, self.screen_width - 40)
+                y = 0
+                segments = rng.randint(10, 18)
+                px, py = x, y
+                for s in range(segments):
+                    nx = px + rng.randint(-8, 8)
+                    ny = py + rng.randint(14, 22)
+                    pygame.draw.line(screen, (40, 100, 50), (px, py), (nx, ny), 6)
+                    pygame.draw.line(screen, (20, 60, 30), (px, py), (nx, ny), 2)
+                    px, py = nx, ny
+            return
+        if motif == 'cracking_lava':
+            # Cracking lava background: dark base with bright cracks
+            screen.fill((30, 20, 20))
+            rng = random.Random(97531)
+            # Draw random crack veins
+            for _ in range(100):
+                x = rng.randint(0, self.screen_width)
+                y = rng.randint(0, self.screen_height)
+                length = rng.randint(40, 140)
+                angle = rng.uniform(0, 3.14)
+                dx = int(length * 0.8 * math.cos(angle)) if 'math' in globals() else 0
+                dy = int(length * 0.8 * math.sin(angle)) if 'math' in globals() else 0
+                color = rng.choice([(255, 120, 0), (255, 180, 60), (255, 60, 0)])
+                pygame.draw.line(screen, color, (x, y), (x + dx, y + dy), rng.randint(2, 4))
+            return
+        if motif == 'icy':
+            # Icy blue gradient with snowflakes and ice shards at bottom
+            top = (200, 230, 255)
+            bottom = (140, 190, 230)
+            for y in range(self.screen_height):
+                t = y / max(1, self.screen_height - 1)
+                r = int(top[0] * (1 - t) + bottom[0] * t)
+                g = int(top[1] * (1 - t) + bottom[1] * t)
+                b = int(top[2] * (1 - t) + bottom[2] * t)
+                pygame.draw.line(screen, (r, g, b), (0, y), (self.screen_width, y))
+            rng = random.Random(1122)
+            # Snowflakes
+            for _ in range(80):
+                x = rng.randint(0, self.screen_width)
+                y = rng.randint(0, self.screen_height)
+                pygame.draw.circle(screen, (255, 255, 255), (x, y), rng.randint(1, 2))
+            # Ice shards at bottom
+            for _ in range(20):
+                x = rng.randint(0, self.screen_width)
+                w = rng.randint(8, 18)
+                h = rng.randint(20, 60)
+                pygame.draw.polygon(screen, (190, 240, 255), [(x, self.screen_height), (x + w//2, self.screen_height - h), (x + w, self.screen_height)])
+            return
+        if motif == 'cheese':
+            # Cheese motif: big holes and drips
+            rng = random.Random(7777)
+            cheese_yellow = (248, 240, 202)
+            darker = (230, 210, 175)
+            # Drips at the top
+            for i in range(6):
+                w = rng.randint(60, 120)
+                h = rng.randint(30, 70)
+                x = rng.randint(10, self.screen_width - w - 10)
+                pygame.draw.ellipse(screen, cheese_yellow, (x, 0, w, h))
+                pygame.draw.ellipse(screen, darker, (x, 0, w, h), 3)
+            # Holes scattered
+            for _ in range(22):
+                r = rng.randint(8, 26)
+                x = rng.randint(r+6, self.screen_width - r - 6)
+                y = rng.randint(40, self.screen_height - r - 20)
+                pygame.draw.circle(screen, darker, (x, y), r)
+                pygame.draw.circle(screen, (205, 190, 155), (x + r//4, y + r//4), max(2, r//3))
+            return
         if motif == 'stars':
             # Night - little white stars
             for _ in range(38):

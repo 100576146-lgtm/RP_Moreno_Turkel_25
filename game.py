@@ -8,7 +8,7 @@ from camera import Camera
 from entities import Player, Enemy, Platform, Powerup, Obstacle, Checkpoint, StarPowerup
 from background import Background
 from ui import UI
-from levels import generate_levels
+from levels import load_levels
 from smart_level_generator import SmartLevelGenerator
 
 
@@ -22,16 +22,16 @@ class Game:
             self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
             self.screen_width = SCREEN_WIDTH
             self.screen_height = SCREEN_HEIGHT
-        pygame.display.set_caption("Puppy Platformer")
+        pygame.display.set_caption("Rat Race")
         self.clock = pygame.time.Clock()
 
         self.sound_manager = SoundManager()
-        self.state = GameState.MENU
+        self.state = GameState.LOADING
         self.lives = 3
         self.score = 0
         self.level_progress = 0
         self.current_level = 0
-        self.levels = generate_levels()
+        self.levels = load_levels()
         self.theme = self.levels[self.current_level]["theme"]
 
         self.all_sprites = pygame.sprite.Group()
@@ -49,9 +49,8 @@ class Game:
         self.bg.set_theme(self.theme)
         self.ui = UI(self.screen_width, self.screen_height)
 
-        self.create_level()
-        self.player = Player(100, 400, self.sound_manager)
-        self.all_sprites.add(self.player)
+        # Delay heavy setup until first frame so loading screen shows
+        self._needs_initial_load = True
 
     def create_level(self):
         level_def = self.levels[self.current_level]
@@ -91,7 +90,7 @@ class Game:
         # Get enemy stepping stones from generator
         stepping_stone_enemies = generator.get_enemy_stepping_stones()
 
-        # Generate checkpoints (houses) at regular intervals
+        # Generate checkpoints (houses or cheese wheels) at regular intervals
         checkpoint_count = 3  # 3 checkpoints per level
         checkpoint_spacing = level_def["width"] // (checkpoint_count + 1)
         
@@ -112,11 +111,21 @@ class Game:
         # Then add regular enemies
         enemy_kinds = ["basic", "fast", "jumper", "big", "double_hit", "air_bat", "air_dragon"]
         enemy_count = 8 + level_def["difficulty"] * 2
+        if self.theme.get("name") == "Smelted Dreams":
+            enemy_count += 6  # harder lava level
+        # Increase jungle level difficulty
+        if self.theme.get("name") == "Moss-t Be Joking":
+            enemy_count += 4
         rng = random.Random(9000 + self.current_level)
         for _ in range(enemy_count):
             x = rng.randint(300, level_def["width"] - 300)
             # Air enemies spawn higher up
-            if rng.random() < 0.3:  # 30% chance for air enemies
+            air_chance = 0.3
+            if self.theme.get("name") == "Moss-t Be Joking":
+                air_chance = 0.5
+            elif self.theme.get("name") == "Smelted Dreams":
+                air_chance = 0.45
+            if rng.random() < air_chance:
                 y = rng.randint(100, 300)  # Higher up for air enemies
             else:
                 y = rng.randint(240, 460)  # Normal ground level
@@ -166,11 +175,34 @@ class Game:
         rng = random.Random(555 + self.current_level)
         spike_count = 3 + level_def["difficulty"]
         for _ in range(spike_count):
-            obstacle_positions.append((rng.randint(600, level_def["width"] - 400), level_def["height"] - 64, "spike"))
+            # Replace spikes with cheese globs on level 1 (The Big Melt-down)
+            if self.theme.get("name") == "The Big Melt-down":
+                otype = "cheese_glob"
+            elif self.theme.get("name") == "Smelted Dreams" and rng.random() < 0.6:
+                otype = "lava_pit"
+            elif self.theme.get("name") == "Moss-t Be Joking" and rng.random() < 0.7:
+                otype = "rock"
+            elif self.theme.get("name") == "Frost and Furious":
+                # Mostly ice spikes for frost level
+                otype = "ice_spike" if rng.random() < 0.85 else "spike"
+            else:
+                otype = "spike"
+            obstacle_positions.append((rng.randint(600, level_def["width"] - 400), level_def["height"] - 64, otype))
         for x, y, otype in obstacle_positions:
             obstacle = Obstacle(x, y, otype)
             self.obstacles.add(obstacle)
             self.all_sprites.add(obstacle)
+
+        # Jungle plants on some platforms to block the way
+        if self.theme.get("name") == "Moss-t Be Joking":
+            plant_rng = random.Random(4321 + self.current_level)
+            candidate_platforms = [p for p in self.platforms if p.rect.y < level_def["height"] - 80 and p.rect.width >= 100]
+            for p in candidate_platforms[::3]:
+                if plant_rng.random() < 0.6:
+                    plant_x = p.rect.centerx + plant_rng.randint(-p.rect.width//4, p.rect.width//4)
+                    plant = Obstacle(plant_x, p.rect.y - 46, "jungle_plant")
+                    self.obstacles.add(plant)
+                    self.all_sprites.add(plant)
 
         # Create one star powerup in an accessible but challenging location
         star_pos = generator.find_accessible_star_position()
@@ -185,6 +217,16 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F11:
                     self.toggle_fullscreen()
+                # Handle global ESC first for consistent quitting from menus
+                elif event.key == pygame.K_ESCAPE:
+                    if self.state == GameState.PLAYING:
+                        self.state = GameState.MENU
+                    else:
+                        return False
+                elif self.state == GameState.LOADING:
+                    # Allow skip loading to menu
+                    if event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                        self.state = GameState.MENU
                 elif self.state == GameState.MENU:
                     if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
                         self.start_game()
@@ -209,11 +251,6 @@ class Game:
                         self.restart_game()
                     elif event.key == pygame.K_m:
                         self.state = GameState.MENU
-                elif event.key == pygame.K_ESCAPE:
-                    if self.state == GameState.PLAYING:
-                        self.state = GameState.MENU
-                    else:
-                        return False
         return True
     
     def toggle_fullscreen(self):
@@ -300,6 +337,14 @@ class Game:
         self.camera.y = 0
 
     def update(self):
+        if self._needs_initial_load:
+            # Perform heavy setup now that we've shown at least one frame
+            self.create_level()
+            self.player = Player(100, 400, self.sound_manager)
+            self.all_sprites.add(self.player)
+            self._needs_initial_load = False
+            self.state = GameState.MENU
+            return
         if self.state == GameState.PLAYING:
             self.camera.update(self.player)
             result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x)
@@ -363,7 +408,9 @@ class Game:
                 self.all_sprites.add(enemy)
 
     def draw(self):
-        if self.state == GameState.MENU:
+        if self.state == GameState.LOADING:
+            self._draw_loading()
+        elif self.state == GameState.MENU:
             self._draw_menu()
         elif self.state == GameState.PLAYING:
             self._draw_game()
@@ -376,28 +423,38 @@ class Game:
         pygame.display.flip()
 
     def _draw_menu(self):
+        # Cheese themed menu
+        cheese_theme = {"sky_top": (248, 240, 202), "sky_bottom": (230, 210, 175), "bg_motif": "cheese"}
+        old_theme = self.bg.theme
+        self.bg.set_theme(cheese_theme)
         self.bg.draw(self.screen, self.current_level)
+        # Semi-transparent vignette
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.set_alpha(64)
+        overlay.set_alpha(50)
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
-        self.ui.draw_bubble_text(self.screen, "Puppy Platformer", SCREEN_WIDTH//2, SCREEN_HEIGHT//4, center=True, size=84)
-        self.ui.draw_bubble_text(self.screen, "A Bubblegum Adventure", SCREEN_WIDTH//2, SCREEN_HEIGHT//4 + 60, center=True, size=36)
-        instructions = [
-            ("Press SPACE/ENTER to Start", MINT_GREEN),
-            ("Press L for Level Select", SOFT_YELLOW),
-            ("Arrows/WASD to Move, SPACE to Jump", PEACH),
-            ("ESC to Quit", CORAL)
-        ]
-        start_y = SCREEN_HEIGHT//2 + 40
-        for i, (instruction, color) in enumerate(instructions):
-            button_width = 350
-            button_height = 35
-            button_rect = pygame.Rect(SCREEN_WIDTH//2 - button_width//2, start_y + i * 50, button_width, button_height)
-            pygame.draw.rect(self.screen, color, button_rect)
-            pygame.draw.rect(self.screen, BLACK, button_rect, 2)
-            self.ui.draw_bubble_text(self.screen, instruction, button_rect.centerx, button_rect.centery - 2, center=True, size=28)
+        # Title
+        self.ui.draw_cheese_title(self.screen, "Rat Race", SCREEN_WIDTH//2, SCREEN_HEIGHT//4, center=True, size=96)
+        self.ui.draw_bubble_text(self.screen, "Cheese-fueled platformer", SCREEN_WIDTH//2, SCREEN_HEIGHT//4 + 60, center=True, size=36, max_width=SCREEN_WIDTH - 80)
+        # Buttons
+        start_y = SCREEN_HEIGHT//2 + 20
+        self.ui.draw_cheese_button(self.screen, "Start (SPACE/ENTER)", SCREEN_WIDTH//2, start_y)
+        self.ui.draw_cheese_button(self.screen, "Level Select (L)", SCREEN_WIDTH//2, start_y + 60)
+        self.ui.draw_cheese_button(self.screen, "ESC to Quit", SCREEN_WIDTH//2, start_y + 120)
         self.ui.draw_bubble_text(self.screen, "Sound effects enabled", SCREEN_WIDTH//2, SCREEN_HEIGHT - 30, center=True, size=24)
+        # Restore level theme for gameplay drawing
+        self.bg.set_theme(old_theme)
+
+    def _draw_loading(self):
+        # Distinct cheese loading screen with big drips
+        cheese_theme = {"sky_top": (248, 240, 202), "sky_bottom": (230, 210, 175), "bg_motif": "cheese"}
+        old_theme = self.bg.theme
+        self.bg.set_theme(cheese_theme)
+        self.bg.draw(self.screen, self.current_level)
+        # Loading text
+        self.ui.draw_cheese_title(self.screen, "Loading...", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 20, center=True, size=72)
+        self.ui.draw_bubble_text(self.screen, "Tip: Holes make the best shortcuts.", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 40, center=True, size=28)
+        self.bg.set_theme(old_theme)
 
     def _draw_game(self):
         self.bg.draw(self.screen, self.current_level)
@@ -411,7 +468,7 @@ class Game:
         panel_rect = pygame.Rect(10, 44, 200, 40)
         pygame.draw.rect(self.screen, SOFT_YELLOW, panel_rect)
         pygame.draw.rect(self.screen, BLACK, panel_rect, 2)
-        self.ui.draw_bubble_text(self.screen, f"Score: {self.score}", panel_rect.left + 10, panel_rect.centery, center=False, size=28)
+        self.ui.draw_bubble_text(self.screen, f"Score: {self.score}", panel_rect.left + 10, panel_rect.centery, center=False, size=28, max_width=panel_rect.width - 20)
         self.ui.draw_bubble_text(self.screen, f"Level: {self.current_level + 1}/{len(self.levels)}", 10, 94, center=False, size=28)
         
         # Draw star powerup timer if active
@@ -478,37 +535,37 @@ class Game:
         self.ui.draw_bubble_text(self.screen, "Press M for Menu", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 50, center=True, size=28)
 
     def _draw_game_over(self):
+        # Cheese themed game over screen
+        cheese_theme = {"sky_top": (248, 240, 202), "sky_bottom": (230, 210, 175), "bg_motif": "cheese"}
+        old_theme = self.bg.theme
+        self.bg.set_theme(cheese_theme)
         self.bg.draw(self.screen, self.current_level)
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.set_alpha(128)
+        overlay.set_alpha(110)
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
-        self.ui.draw_bubble_text(self.screen, "GAME OVER", SCREEN_WIDTH//2, SCREEN_HEIGHT//3, center=True, size=84)
-        panel_rect = pygame.Rect(SCREEN_WIDTH//2 - 200, SCREEN_HEIGHT//2 - 60, 400, 120)
-        pygame.draw.rect(self.screen, LIGHT_PURPLE, panel_rect)
-        pygame.draw.rect(self.screen, BLACK, panel_rect, 3)
-        self.ui.draw_bubble_text(self.screen, f"Final Score: {self.score}", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 20, center=True, size=52)
-        self.ui.draw_bubble_text(self.screen, f"Level Reached: {self.level_progress + 1}", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 20, center=True, size=36)
-        instructions = [
-            ("Press R or SPACE to Restart", SOFT_YELLOW),
-            ("Press M for Main Menu", MINT_GREEN),
-            ("Press ESC to Quit", CORAL)
-        ]
-        for i, (instruction, color) in enumerate(instructions):
-            button_width = 300
-            button_height = 35
-            button_rect = pygame.Rect(SCREEN_WIDTH//2 - button_width//2, SCREEN_HEIGHT//2 + 120 + i * 50, button_width, button_height)
-            pygame.draw.rect(self.screen, color, button_rect)
-            pygame.draw.rect(self.screen, BLACK, button_rect, 2)
-            self.ui.draw_bubble_text(self.screen, instruction, button_rect.centerx, button_rect.centery - 2, center=True, size=28)
+        self.ui.draw_cheese_title(self.screen, "Game Over", SCREEN_WIDTH//2, SCREEN_HEIGHT//3, center=True, size=96)
+        # Stats
+        self.ui.draw_bubble_text(self.screen, f"Final Score: {self.score}", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 10, center=True, size=48)
+        self.ui.draw_bubble_text(self.screen, f"Level Reached: {self.level_progress + 1}", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 30, center=True, size=32)
+        # Cheese buttons
+        base_y = SCREEN_HEIGHT//2 + 110
+        self.ui.draw_cheese_button(self.screen, "Restart (R/SPACE)", SCREEN_WIDTH//2, base_y)
+        self.ui.draw_cheese_button(self.screen, "Main Menu (M)", SCREEN_WIDTH//2, base_y + 60)
+        self.ui.draw_cheese_button(self.screen, "ESC to Quit", SCREEN_WIDTH//2, base_y + 120)
+        self.bg.set_theme(old_theme)
 
     def _draw_level_select(self):
+        # Cheese themed level select
+        cheese_theme = {"sky_top": (248, 240, 202), "sky_bottom": (230, 210, 175), "bg_motif": "cheese"}
+        old_theme = self.bg.theme
+        self.bg.set_theme(cheese_theme)
         self.bg.draw(self.screen, self.current_level)
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.set_alpha(96)
+        overlay.set_alpha(90)
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
-        self.ui.draw_bubble_text(self.screen, "Select Level", SCREEN_WIDTH//2, 90, center=True, size=72)
+        self.ui.draw_cheese_title(self.screen, "Select Level", SCREEN_WIDTH//2, 90, center=True, size=84)
         top = 160
         for i, level in enumerate(self.levels):
             name = f"{i+1}. {level['theme'].get('name', 'Level')}"
@@ -518,7 +575,9 @@ class Game:
                 pygame.draw.rect(self.screen, MINT_GREEN, bar)
                 pygame.draw.rect(self.screen, BLACK, bar, 2)
             self.ui.draw_bubble_text(self.screen, name, SCREEN_WIDTH//2, y, center=True, size=28)
-        self.ui.draw_bubble_text(self.screen, "UP/DOWN to choose, ENTER to play, M for menu", SCREEN_WIDTH//2, SCREEN_HEIGHT - 60, center=True, size=24)
+        # Instruction cheese button
+        self.ui.draw_cheese_button(self.screen, "UP/DOWN to choose, ENTER to play, M for menu", SCREEN_WIDTH//2, SCREEN_HEIGHT - 50, width=560, height=44)
+        self.bg.set_theme(old_theme)
 
 
 def run_game():
