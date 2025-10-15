@@ -13,6 +13,7 @@ class SmartLevelGenerator:
         self.difficulty = difficulty
         self.platforms = []
         self.enemy_positions = []  # Track enemy positions for stepping stones
+        self.ground_holes = []  # Track ground hole positions
         self.rng = random.Random(1337 + difficulty)
         
         # Calculate safe horizontal jump distance (player can move while jumping)
@@ -24,18 +25,81 @@ class SmartLevelGenerator:
         self.platforms = []
         self.enemy_positions = []
         
-        # Ground platforms (always accessible) - create a solid ground
-        for x in range(0, self.level_width, 200):
-            self.platforms.append({
-                'x': x, 'y': self.level_height - 40, 
-                'width': 200, 'height': 40, 
-                'type': 'ground'
-            })
+        # Ground platforms with occasional holes based on difficulty
+        self._generate_ground_with_holes()
         
         # Generate floating platforms in a connected chain
         self._generate_connected_platforms()
         
         return self.platforms
+    
+    def _generate_ground_with_holes(self):
+        """Generate ground platforms with gaps/holes based on difficulty."""
+        # Calculate hole frequency: more holes at higher difficulty
+        # difficulty 0: ~2 holes, difficulty 9: ~12 holes
+        hole_count = 2 + self.difficulty
+        
+        # Create full ground first
+        ground_segments = []
+        for x in range(0, self.level_width, 200):
+            ground_segments.append({
+                'x': x, 'y': self.level_height - 40, 
+                'width': 200, 'height': 40, 
+                'type': 'ground'
+            })
+        
+        # Remove segments to create holes
+        if hole_count > 0 and len(ground_segments) > 10:
+            # Don't put holes at the very start or end
+            safe_start = 3  # Keep first 3 segments safe for spawn
+            safe_end = 2    # Keep last 2 segments safe for level end
+            available_segments = ground_segments[safe_start:-safe_end]
+            
+            if len(available_segments) > hole_count * 2:
+                # Randomly select segments to remove (create holes)
+                # Hole size: 1-3 consecutive segments based on difficulty
+                holes_created = 0
+                attempts = 0
+                max_attempts = hole_count * 3
+                
+                while holes_created < hole_count and attempts < max_attempts:
+                    attempts += 1
+                    
+                    # Random hole size: bigger holes at higher difficulty
+                    hole_size = self.rng.randint(1, min(3, 1 + self.difficulty // 3))
+                    
+                    # Random position
+                    if len(available_segments) > hole_size:
+                        start_idx = self.rng.randint(0, len(available_segments) - hole_size)
+                        
+                        # Check if this area already has a hole nearby
+                        can_place = True
+                        for i in range(max(0, start_idx - 2), min(len(available_segments), start_idx + hole_size + 2)):
+                            if available_segments[i] is None:
+                                can_place = False
+                                break
+                        
+                        if can_place:
+                            # Create hole by removing segments and track hole positions
+                            for i in range(hole_size):
+                                hole_segment = available_segments[start_idx + i]
+                                if hole_segment:
+                                    self.ground_holes.append({
+                                        'x': hole_segment['x'],
+                                        'width': hole_segment['width'],
+                                        'y': hole_segment['y']
+                                    })
+                                available_segments[start_idx + i] = None
+                            holes_created += 1
+                
+                # Rebuild platforms list without None entries
+                self.platforms = ground_segments[:safe_start]
+                self.platforms.extend([seg for seg in available_segments if seg is not None])
+                self.platforms.extend(ground_segments[-safe_end:])
+            else:
+                self.platforms = ground_segments
+        else:
+            self.platforms = ground_segments
     
     def get_enemy_stepping_stones(self):
         """Return positions where enemies should be placed as stepping stones."""
@@ -145,17 +209,27 @@ class SmartLevelGenerator:
             star_x = target_platform['x'] + target_platform['width'] // 2
             star_y = target_platform['y'] - 60  # Just above the platform, easy to get by jumping
             
-            return {'x': star_x, 'y': star_y}
+            return {'x': star_x, 'y': star_y, 'platform': target_platform}
         else:
             # Fallback: place on a random platform
             if latter_half_platforms:
                 target_platform = self.rng.choice(latter_half_platforms)
                 star_x = target_platform['x'] + target_platform['width'] // 2
                 star_y = target_platform['y'] - 60
-                return {'x': star_x, 'y': star_y}
+                return {'x': star_x, 'y': star_y, 'platform': target_platform}
         
         # Ultimate fallback
-        return {'x': self.level_width - 800, 'y': self.level_height - 200}
+        return {'x': self.level_width - 800, 'y': self.level_height - 200, 'platform': None}
+    
+    def is_position_over_hole(self, x, y, width=20):
+        """Check if a position overlaps with a ground hole."""
+        for hole in self.ground_holes:
+            # Check if x position overlaps with hole
+            if (x >= hole['x'] - width and x <= hole['x'] + hole['width'] + width):
+                # Check if y is near ground level
+                if abs(y - hole['y']) < 100:
+                    return True
+        return False
     
     def validate_platform_accessibility(self):
         """Validate that all platforms are accessible."""

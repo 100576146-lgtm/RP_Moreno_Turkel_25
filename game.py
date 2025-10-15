@@ -5,7 +5,7 @@ import constants as const
 from constants import SCREEN_WIDTH, SCREEN_HEIGHT, FULLSCREEN_WIDTH, FULLSCREEN_HEIGHT, FPS, WHITE, BLACK, SOFT_PINK, MINT_GREEN, SOFT_YELLOW, PEACH, CORAL, LIGHT_PURPLE, GameState, set_level_dimensions
 from audio import SoundManager
 from camera import Camera
-from entities import Player, Enemy, Platform, Powerup, Obstacle, Checkpoint, StarPowerup
+from entities import Player, Enemy, Platform, Powerup, Obstacle, Checkpoint, StarPowerup, HiddenDoor, BigCoin, BonusNPC
 from background import Background
 from ui import UI
 from levels import load_levels
@@ -42,7 +42,12 @@ class Game:
         self.plants = pygame.sprite.Group()
         self.obstacles = pygame.sprite.Group()
         self.checkpoints = pygame.sprite.Group()
+        self.hidden_doors = pygame.sprite.Group()
+        self.big_coins = pygame.sprite.Group()
+        self.npcs = pygame.sprite.Group()
         self.last_checkpoint = None  # Track the last activated checkpoint
+        self.return_from_bonus = None
+        self.accessed_hidden_doors = set()  # Track accessed hidden doors by position  # Track where to return from bonus room
 
         self.camera = Camera(self.screen_width, self.screen_height)
         self.bg = Background(self.screen_width, self.screen_height)
@@ -96,11 +101,18 @@ class Game:
         
         for i in range(1, checkpoint_count + 1):
             checkpoint_x = checkpoint_spacing * i
-            # Place checkpoint on ground level (should be visible)
             checkpoint_y = level_def["height"] - 140  # Ground level with proper offset
-            checkpoint = Checkpoint(checkpoint_x, checkpoint_y, theme=self.theme)
-            self.checkpoints.add(checkpoint)
-            self.all_sprites.add(checkpoint)
+            
+            # Check if checkpoint would be over a hole, if so adjust position
+            attempts = 0
+            while generator.is_position_over_hole(checkpoint_x, checkpoint_y, width=80) and attempts < 10:
+                checkpoint_x += 100  # Move right until we find solid ground
+                attempts += 1
+            
+            if attempts < 10:  # Only place if we found a valid position
+                checkpoint = Checkpoint(checkpoint_x, checkpoint_y, theme=self.theme)
+                self.checkpoints.add(checkpoint)
+                self.all_sprites.add(checkpoint)
 
         enemy_data = []
         
@@ -187,7 +199,11 @@ class Game:
                 otype = "ice_spike" if rng.random() < 0.85 else "spike"
             else:
                 otype = "spike"
-            obstacle_positions.append((rng.randint(600, level_def["width"] - 400), level_def["height"] - 64, otype))
+            x = rng.randint(600, level_def["width"] - 400)
+            y = level_def["height"] - 64
+            # Check if obstacle would be over a hole
+            if not generator.is_position_over_hole(x, y, width=40):
+                obstacle_positions.append((x, y, otype))
         for x, y, otype in obstacle_positions:
             obstacle = Obstacle(x, y, otype)
             self.obstacles.add(obstacle)
@@ -209,6 +225,24 @@ class Game:
         star_powerup = StarPowerup(star_pos['x'], star_pos['y'])
         self.star_powerups.add(star_powerup)
         self.all_sprites.add(star_powerup)
+        
+        # Create hidden door near star - requires star powerup jump to reach
+        if star_pos.get('platform'):
+            door_platform = star_pos['platform']
+            # Calculate max jump height with star powerup (1.3x jump strength)
+            star_jump_height = int((15 * 1.3) ** 2 / (2 * 0.8))  # ~183 pixels
+            
+            # Place door above platform, reachable only with star jump
+            door_x = door_platform['x'] + door_platform['width'] // 2 - 24
+            door_y = door_platform['y'] - star_jump_height + 20  # Just within star jump reach
+            
+            # Check if this door has been accessed before
+            door_pos = (door_x, door_y)
+            is_accessed = door_pos in self.accessed_hidden_doors
+            
+            hidden_door = HiddenDoor(door_x, door_y, accessed=is_accessed)
+            self.hidden_doors.add(hidden_door)
+            self.all_sprites.add(hidden_door)
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -271,6 +305,42 @@ class Game:
         self.bg = Background(self.screen_width, self.screen_height)
         self.ui = UI(self.screen_width, self.screen_height)
 
+    def create_bonus_room(self):
+        """Create a simple bonus room with NPC and big coin."""
+        # Small bonus room dimensions
+        set_level_dimensions(800, 600)
+        self.camera.set_level_dimensions(800, 600)
+        
+        # Clear all sprites
+        self.all_sprites.empty()
+        self.platforms.empty()
+        self.enemies.empty()
+        self.powerups.empty()
+        self.star_powerups.empty()
+        self.obstacles.empty()
+        self.hidden_doors.empty()
+        self.big_coins.empty()
+        self.npcs.empty()
+        
+        # Create simple ground
+        ground = Platform(0, 560, 800, 40, platform_type="ground", theme={"name": "Bonus Room"})
+        self.platforms.add(ground)
+        self.all_sprites.add(ground)
+        
+        # Create NPC
+        npc = BonusNPC(200, 500)
+        self.npcs.add(npc)
+        self.all_sprites.add(npc)
+        
+        # Create big coin
+        big_coin = BigCoin(400, 400)
+        self.big_coins.add(big_coin)
+        self.all_sprites.add(big_coin)
+        
+        # Spawn player
+        self.player = Player(100, 500, self.sound_manager)
+        self.all_sprites.add(self.player)
+    
     def start_game(self):
         self.state = GameState.PLAYING
         self.lives = 3
@@ -286,7 +356,13 @@ class Game:
         self.plants.empty()
         self.obstacles.empty()
         self.checkpoints.empty()
+        self.hidden_doors.empty()
+        self.big_coins.empty()
+        self.npcs.empty()
         self.last_checkpoint = None
+        self.return_from_bonus = None
+        # Clear accessed doors when starting a new game
+        self.accessed_hidden_doors.clear()
         self.create_level()
         self.player = Player(100, 400, self.sound_manager)
         self.all_sprites.add(self.player)
@@ -329,7 +405,13 @@ class Game:
         self.plants.empty()
         self.obstacles.empty()
         self.checkpoints.empty()
+        self.hidden_doors.empty()
+        self.big_coins.empty()
+        self.npcs.empty()
         self.last_checkpoint = None
+        self.return_from_bonus = None
+        # Clear accessed doors when restarting
+        self.accessed_hidden_doors.clear()
         self.create_level()
         self.player = Player(100, 400, self.sound_manager)
         self.all_sprites.add(self.player)
@@ -347,7 +429,7 @@ class Game:
             return
         if self.state == GameState.PLAYING:
             self.camera.update(self.player)
-            result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x)
+            result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
             
             # Check for checkpoint collisions
             checkpoint_collisions = pygame.sprite.spritecollide(self.player, self.checkpoints, False)
@@ -363,6 +445,31 @@ class Game:
             if star_collisions:
                 self.player.activate_star_powerup()
                 self.score += 500  # Bonus score for star powerup
+            
+            # Check for hidden door collisions (only with non-accessed doors)
+            door_collisions = pygame.sprite.spritecollide(self.player, self.hidden_doors, False)
+            if door_collisions:
+                # Filter out accessed doors
+                active_doors = [door for door in door_collisions if not door.accessed]
+                if active_doors:
+                    # Mark this door as accessed
+                    for door in active_doors:
+                        door_pos = (door.rect.x, door.rect.y)
+                        self.accessed_hidden_doors.add(door_pos)
+                        door.accessed = True  # Update the door's visual state
+                        door.draw_door()  # Redraw with closed appearance
+                    
+                    # Save current state for return
+                    self.return_from_bonus = {
+                        'level': self.current_level,
+                        'lives': self.lives,
+                        'score': self.score,
+                        'level_progress': self.level_progress
+                    }
+                    # Enter bonus room
+                    self.state = GameState.BONUS_ROOM
+                    self.create_bonus_room()
+                    return
             
             if result == "death" or result == "hit":
                 self.lives -= 1
@@ -390,6 +497,52 @@ class Game:
             self.powerups.update()
             self.star_powerups.update()
             self.platforms.update()
+            self.hidden_doors.update()
+        
+        elif self.state == GameState.BONUS_ROOM:
+            # Simple bonus room logic
+            self.camera.update(self.player)
+            result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
+            
+            # Check for big coin collection
+            big_coin_collisions = pygame.sprite.spritecollide(self.player, self.big_coins, True)
+            if big_coin_collisions:
+                # Give rewards: 1000 points and 3 hearts
+                self.score += 1000
+                self.lives += 3
+                if self.sound_manager:
+                    self.sound_manager.play('coin')
+                
+                # Return to main level after a moment
+                if self.return_from_bonus:
+                    # Store hidden door positions BEFORE recreating level
+                    hidden_door_positions = []
+                    for door in self.hidden_doors:
+                        hidden_door_positions.append((door.rect.x, door.rect.y))
+                    
+                    self.current_level = self.return_from_bonus['level']
+                    self.theme = self.levels[self.current_level]["theme"]
+                    self.create_level()
+                    
+                    # Recreate hidden doors at their original positions with accessed state
+                    for door_x, door_y in hidden_door_positions:
+                        is_accessed = (door_x, door_y) in self.accessed_hidden_doors
+                        hidden_door = HiddenDoor(door_x, door_y, accessed=is_accessed)
+                        self.hidden_doors.add(hidden_door)
+                        self.all_sprites.add(hidden_door)
+                    
+                    # Respawn at checkpoint or start
+                    if self.last_checkpoint:
+                        self.player = Player(self.last_checkpoint.rect.x, self.last_checkpoint.rect.y - 50, self.sound_manager)
+                    else:
+                        self.player = Player(100, 400, self.sound_manager)
+                    self.all_sprites.add(self.player)
+                    self.state = GameState.PLAYING
+                    self.return_from_bonus = None
+            
+            # Update NPCs and coins
+            self.npcs.update()
+            self.big_coins.update()
 
     def _add_difficulty_enemies(self):
         import random
@@ -414,6 +567,8 @@ class Game:
             self._draw_menu()
         elif self.state == GameState.PLAYING:
             self._draw_game()
+        elif self.state == GameState.BONUS_ROOM:
+            self._draw_bonus_room()
         elif self.state == GameState.GAME_OVER:
             self._draw_game_over()
         elif self.state == GameState.LEVEL_COMPLETE:
@@ -555,6 +710,33 @@ class Game:
         self.ui.draw_cheese_button(self.screen, "ESC to Quit", SCREEN_WIDTH//2, base_y + 120)
         self.bg.set_theme(old_theme)
 
+    def _draw_bonus_room(self):
+        # Golden bonus room background
+        bonus_theme = {"sky_top": (255, 240, 180), "sky_bottom": (255, 220, 140), "bg_motif": "glow"}
+        old_theme = self.bg.theme
+        self.bg.set_theme(bonus_theme)
+        self.bg.draw(self.screen, 0)
+        
+        # Draw all sprites
+        for sprite in self.all_sprites:
+            screen_x = sprite.rect.x - self.camera.x
+            screen_y = sprite.rect.y - self.camera.y
+            if (-sprite.rect.width < screen_x < SCREEN_WIDTH and -sprite.rect.height < screen_y < SCREEN_HEIGHT):
+                self.screen.blit(sprite.image, (screen_x, screen_y))
+        
+        # Draw HUD
+        for i in range(self.lives):
+            self.ui.draw_heart(self.screen, 14 + i * 28, 18, 10, SOFT_PINK, BLACK)
+        panel_rect = pygame.Rect(10, 44, 200, 40)
+        pygame.draw.rect(self.screen, SOFT_YELLOW, panel_rect)
+        pygame.draw.rect(self.screen, BLACK, panel_rect, 2)
+        self.ui.draw_bubble_text(self.screen, f"Score: {self.score}", panel_rect.left + 10, panel_rect.centery, center=False, size=28, max_width=panel_rect.width - 20)
+        
+        # Bonus room title
+        self.ui.draw_cheese_title(self.screen, "BONUS ROOM!", SCREEN_WIDTH//2, 80, center=True, size=72)
+        
+        self.bg.set_theme(old_theme)
+    
     def _draw_level_select(self):
         # Cheese themed level select
         cheese_theme = {"sky_top": (248, 240, 202), "sky_bottom": (230, 210, 175), "bg_motif": "cheese"}

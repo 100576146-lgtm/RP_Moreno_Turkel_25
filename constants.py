@@ -163,6 +163,7 @@ class GameState(Enum):
     PAUSED = 4
     LEVEL_COMPLETE = 5
     LEVEL_SELECT = 6
+    BONUS_ROOM = 7
 
 def set_level_dimensions(width: int, height: int) -> None:
     global LEVEL_WIDTH, LEVEL_HEIGHT

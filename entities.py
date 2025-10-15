@@ -118,7 +118,7 @@ class Player(pygame.sprite.Sprite):
             self.rect.center = old_center
     
 
-    def update(self, platforms, enemies, powerups, obstacles, camera_x):
+    def update(self, platforms, enemies, powerups, obstacles, camera_x, level_width=None):
         # Update star powerup timer
         if self.star_active:
             self.star_timer -= 1
@@ -194,8 +194,10 @@ class Player(pygame.sprite.Sprite):
                 self.vel_y = 0
         if self.rect.left < 0:
             self.rect.left = 0
-        if self.rect.right > LEVEL_WIDTH:
-            self.rect.right = LEVEL_WIDTH
+        # Use passed level_width if provided, otherwise fall back to global
+        max_width = level_width if level_width is not None else LEVEL_WIDTH
+        if self.rect.right > max_width:
+            self.rect.right = max_width
         if self.rect.top > LEVEL_HEIGHT:
             self.is_dying = True
             self.animation_state = "dying"
@@ -1048,6 +1050,155 @@ class StarPowerup(pygame.sprite.Sprite):
         
         # Redraw star with new animation state
         self.draw_star()
+
+
+class HiddenDoor(pygame.sprite.Sprite):
+    """Secret door that requires star powerup to reach."""
+    def __init__(self, x, y, accessed=False):
+        super().__init__()
+        self.image = pygame.Surface((48, 64), pygame.SRCALPHA)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.pulse_offset = 0
+        self.accessed = accessed
+        self.draw_door()
+    
+    def draw_door(self):
+        """Draw a mysterious glowing door."""
+        self.image.fill((0, 0, 0, 0))
+        w, h = self.image.get_size()
+        
+        # If accessed, draw a closed/disappeared door
+        if self.accessed:
+            # Draw a simple closed door (darker, no glow)
+            pygame.draw.rect(self.image, (60, 40, 80), (4, 8, w-8, h-16), border_radius=8)
+            pygame.draw.rect(self.image, (100, 80, 120), (4, 8, w-8, h-16), 3, border_radius=8)
+            
+            # Draw a simple "X" to indicate it's closed
+            font = pygame.font.Font(None, 36)
+            text = font.render("X", True, (150, 150, 150))
+            text_rect = text.get_rect(center=(w//2, h//2))
+            self.image.blit(text, text_rect)
+        else:
+            # Original glowing door
+            # Door frame
+            pygame.draw.rect(self.image, (80, 60, 100), (4, 8, w-8, h-16), border_radius=8)
+            pygame.draw.rect(self.image, (120, 100, 140), (4, 8, w-8, h-16), 3, border_radius=8)
+            
+            # Inner glow with pulse
+            pulse_intensity = abs(math.sin(self.pulse_offset))
+            glow_color = (150 + int(50 * pulse_intensity), 120 + int(30 * pulse_intensity), 200)
+            pygame.draw.rect(self.image, glow_color, (10, 14, w-20, h-28), border_radius=6)
+            
+            # Mystery symbol (question mark)
+            font = pygame.font.Font(None, 48)
+            text = font.render("?", True, WHITE)
+            text_rect = text.get_rect(center=(w//2, h//2))
+            self.image.blit(text, text_rect)
+    
+    def update(self):
+        """Animate the door pulse."""
+        self.pulse_offset += 0.1
+        self.draw_door()
+
+
+class BigCoin(pygame.sprite.Sprite):
+    """Large coin that gives many points and hearts."""
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface((60, 60), pygame.SRCALPHA)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.float_offset = 0
+        self.original_y = y
+        self.spin_angle = 0
+        self.draw_coin()
+    
+    def draw_coin(self):
+        """Draw a big golden coin."""
+        self.image.fill((0, 0, 0, 0))
+        center = 30
+        
+        # Outer glow
+        for r in range(32, 26, -2):
+            alpha = 60 - (32 - r) * 10
+            pygame.draw.circle(self.image, (*SOFT_YELLOW[:3], alpha), (center, center), r)
+        
+        # Main coin body
+        pygame.draw.circle(self.image, CHEESE_YELLOW, (center, center), 26)
+        pygame.draw.circle(self.image, (200, 160, 0), (center, center), 26, 3)
+        
+        # Inner circle
+        pygame.draw.circle(self.image, SOFT_YELLOW, (center, center), 20)
+        pygame.draw.circle(self.image, (200, 160, 0), (center, center), 20, 2)
+        
+        # Dollar sign
+        font = pygame.font.Font(None, 36)
+        text = font.render("$", True, (180, 140, 0))
+        text_rect = text.get_rect(center=(center, center))
+        self.image.blit(text, text_rect)
+        
+        # Sparkles
+        for _ in range(4):
+            angle = self.spin_angle + _ * 90
+            rad = math.radians(angle)
+            sx = center + int(18 * math.cos(rad))
+            sy = center + int(18 * math.sin(rad))
+            pygame.draw.circle(self.image, WHITE, (sx, sy), 3)
+    
+    def update(self):
+        """Animate the big coin."""
+        self.float_offset += 0.08
+        float_y = int(8 * math.sin(self.float_offset))
+        self.rect.y = self.original_y + float_y
+        
+        self.spin_angle += 4
+        if self.spin_angle >= 360:
+            self.spin_angle = 0
+        self.draw_coin()
+
+
+class BonusNPC(pygame.sprite.Sprite):
+    """NPC that gives rewards in bonus room."""
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface((40, 56), pygame.SRCALPHA)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.bounce_offset = 0
+        self.draw_npc()
+    
+    def draw_npc(self):
+        """Draw a friendly cheese character."""
+        self.image.fill((0, 0, 0, 0))
+        w, h = self.image.get_size()
+        
+        # Cheese body
+        pygame.draw.ellipse(self.image, CHEESE_YELLOW, (4, 14, 32, 36))
+        pygame.draw.ellipse(self.image, BURNT_ORANGE, (4, 14, 32, 36), 2)
+        
+        # Cheese holes
+        pygame.draw.circle(self.image, (200, 180, 140), (12, 26), 4)
+        pygame.draw.circle(self.image, (200, 180, 140), (26, 32), 5)
+        
+        # Happy face
+        pygame.draw.circle(self.image, BLACK, (14, 22), 3)
+        pygame.draw.circle(self.image, BLACK, (26, 22), 3)
+        pygame.draw.arc(self.image, BLACK, (12, 28, 16, 12), 0, 3.14, 2)
+        
+        # Crown
+        for i in range(3):
+            x = 10 + i * 8
+            pygame.draw.polygon(self.image, SOFT_YELLOW, [(x, 14), (x+4, 8), (x+8, 14)])
+    
+    def update(self):
+        """Animate NPC bounce."""
+        self.bounce_offset += 0.15
+        bounce = int(4 * abs(math.sin(self.bounce_offset)))
+        self.rect.y = self.rect.y - bounce + int(4 * abs(math.sin(self.bounce_offset - 0.15)))
 
 
 class Obstacle(pygame.sprite.Sprite):
