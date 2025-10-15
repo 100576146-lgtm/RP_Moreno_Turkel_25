@@ -17,7 +17,7 @@ WHITE = (255, 255, 255)
 BLACK = (50, 50, 50)  # Softer black
 CREAM = (255, 253, 240)
 SOFT_BLUE = (173, 216, 230)
-SKY_BLUE = (135, 206, 235)
+SKY_BLUE = (135, 206, 235) 
 LAVENDER = (230, 230, 250)
 SOFT_PURPLE = (221, 160, 221)
 LIGHT_PURPLE = (238, 203, 238)
@@ -166,7 +166,7 @@ class SoundManager:
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y, sound_manager=None):
         super().__init__()
-        self.image = pygame.Surface((32, 48), pygame.SRCALPHA)
+        self.image = pygame.Surface((40, 60), pygame.SRCALPHA)
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
@@ -180,6 +180,9 @@ class Player(pygame.sprite.Sprite):
         
         # Animation
         self.facing_right = True
+        self.animation_frame = 0
+        self.animation_timer = 0
+        self.is_moving = False
         
         # Sound
         self.sound_manager = sound_manager
@@ -189,40 +192,54 @@ class Player(pygame.sprite.Sprite):
     
     def draw_character(self):
         self.image.fill((0, 0, 0, 0))
-        # Purple dog design
-        body_color = SOFT_PURPLE
-        outline = DUSTY_ROSE
-        # Torso
-        pygame.draw.ellipse(self.image, body_color, (4, 18, 24, 26))
-        pygame.draw.ellipse(self.image, outline, (4, 18, 24, 26), 2)
-        # Head
-        pygame.draw.ellipse(self.image, body_color, (6, 4, 22, 18))
-        pygame.draw.ellipse(self.image, outline, (6, 4, 22, 18), 2)
-        # Floppy ears
-        pygame.draw.ellipse(self.image, LIGHT_PURPLE, (3, 6, 8, 12))
-        pygame.draw.ellipse(self.image, LIGHT_PURPLE, (23, 6, 8, 12))
+        # Rat design with cheese colors
+        body_color = SOFT_YELLOW  # Cheese yellow
+        outline = LIGHT_BROWN     # Cheese crust
+        # Torso (bigger for rat)
+        pygame.draw.ellipse(self.image, body_color, (6, 24, 28, 30))
+        pygame.draw.ellipse(self.image, outline, (6, 24, 28, 30), 3)
+        # Head (bigger for rat)
+        pygame.draw.ellipse(self.image, body_color, (8, 6, 24, 20))
+        pygame.draw.ellipse(self.image, outline, (8, 6, 24, 20), 3)
+        # Pointed ears
+        pygame.draw.polygon(self.image, PEACH, [(8, 8), (12, 4), (16, 8)])
+        pygame.draw.polygon(self.image, PEACH, [(24, 8), (28, 4), (32, 8)])
         # Snout and nose
-        snout_x = 18 if self.facing_right else 10
-        pygame.draw.ellipse(self.image, LIGHT_PURPLE, (snout_x, 10, 8, 6))
-        pygame.draw.circle(self.image, SOFT_PINK, (snout_x + (6 if self.facing_right else 2), 13), 2)
+        snout_x = 22 if self.facing_right else 12
+        pygame.draw.ellipse(self.image, PEACH, (snout_x, 12, 10, 8))
+        pygame.draw.circle(self.image, BLACK, (snout_x + (8 if self.facing_right else 2), 16), 2)
         # Eyes
         if self.facing_right:
-            pygame.draw.circle(self.image, WHITE, (14, 10), 3)
-            pygame.draw.circle(self.image, WHITE, (20, 10), 3)
-            pygame.draw.circle(self.image, BLACK, (14, 10), 1)
-            pygame.draw.circle(self.image, BLACK, (20, 10), 1)
+            pygame.draw.circle(self.image, WHITE, (16, 12), 4)
+            pygame.draw.circle(self.image, WHITE, (24, 12), 4)
+            pygame.draw.circle(self.image, BLACK, (16, 12), 2)
+            pygame.draw.circle(self.image, BLACK, (24, 12), 2)
         else:
-            pygame.draw.circle(self.image, WHITE, (12, 10), 3)
-            pygame.draw.circle(self.image, WHITE, (18, 10), 3)
-            pygame.draw.circle(self.image, BLACK, (12, 10), 1)
-            pygame.draw.circle(self.image, BLACK, (18, 10), 1)
-        # Tail
-        pygame.draw.arc(self.image, LIGHT_PURPLE, (0, 22, 14, 16), 1.5, 3.0, 3)
-        # Paws
-        pygame.draw.ellipse(self.image, DUSTY_ROSE, (6, 42, 8, 6))
-        pygame.draw.ellipse(self.image, DUSTY_ROSE, (18, 42, 8, 6))
-        pygame.draw.circle(self.image, SOFT_PINK, (10, 44), 1)
-        pygame.draw.circle(self.image, SOFT_PINK, (22, 44), 1)
+            pygame.draw.circle(self.image, WHITE, (14, 12), 4)
+            pygame.draw.circle(self.image, WHITE, (22, 12), 4)
+            pygame.draw.circle(self.image, BLACK, (14, 12), 2)
+            pygame.draw.circle(self.image, BLACK, (22, 12), 2)
+        # Long rat tail (animated when moving)
+        tail_offset = self.animation_frame * 2 if self.is_moving else 0
+        pygame.draw.arc(self.image, LIGHT_BROWN, (0 + tail_offset, 28, 18, 20), 1.5, 3.0, 4)
+        # Feet (animated when moving)
+        if self.is_moving:
+            # Running animation - alternate foot positions
+            if self.animation_frame % 2 == 0:
+                pygame.draw.ellipse(self.image, LIGHT_BROWN, (8, 54, 10, 6))   # Left foot down
+                pygame.draw.ellipse(self.image, LIGHT_BROWN, (22, 50, 10, 6))  # Right foot up
+            else:
+                pygame.draw.ellipse(self.image, LIGHT_BROWN, (8, 50, 10, 6))   # Left foot up
+                pygame.draw.ellipse(self.image, LIGHT_BROWN, (22, 54, 10, 6))  # Right foot down
+        else:
+            # Standing position
+            pygame.draw.ellipse(self.image, LIGHT_BROWN, (8, 52, 10, 8))
+            pygame.draw.ellipse(self.image, LIGHT_BROWN, (22, 52, 10, 8))
+        
+        # Claws
+        claw_offset = 1 if self.is_moving and self.animation_frame % 2 == 0 else 0
+        pygame.draw.circle(self.image, BLACK, (12 + claw_offset, 56), 1)
+        pygame.draw.circle(self.image, BLACK, (26 - claw_offset, 56), 1)
         
     def update(self, platforms, enemies, powerups, obstacles, camera_x):
         keys = pygame.key.get_pressed()
@@ -230,15 +247,30 @@ class Player(pygame.sprite.Sprite):
         # Horizontal movement
         self.vel_x = 0
         old_facing = self.facing_right
+        was_moving = self.is_moving
+        
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
             self.vel_x = -PLAYER_SPEED
             self.facing_right = False
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            self.is_moving = True
+        elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             self.vel_x = PLAYER_SPEED
             self.facing_right = True
+            self.is_moving = True
+        else:
+            self.is_moving = False
             
-        # Redraw character if facing direction changed
-        if old_facing != self.facing_right:
+        # Update animation
+        if self.is_moving:
+            self.animation_timer += 1
+            if self.animation_timer >= 10:  # Animation speed
+                self.animation_timer = 0
+                self.animation_frame = (self.animation_frame + 1) % 4
+        else:
+            self.animation_frame = 0
+            
+        # Redraw character if facing direction changed or movement state changed
+        if old_facing != self.facing_right or was_moving != self.is_moving:
             self.draw_character()
             
         # Jumping (only when on ground)
@@ -744,7 +776,7 @@ class Camera:
 class Game:
     def __init__(self):
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Mario-Style Platformer")
+        pygame.display.set_caption("Rat Race")
         self.clock = pygame.time.Clock()
         
         # Initialize sound manager
@@ -1162,17 +1194,17 @@ class Game:
         self.screen.blit(overlay, (0, 0))
         
         # Title bubble text
-        self.draw_bubble_text("Puppy Platformer", SCREEN_WIDTH//2, SCREEN_HEIGHT//4, center=True, size=84)
+        self.draw_bubble_text("Rat Race", SCREEN_WIDTH//2, SCREEN_HEIGHT//4, center=True, size=84)
         
         # Subtitle
-        self.draw_bubble_text("A Bubblegum Adventure", SCREEN_WIDTH//2, SCREEN_HEIGHT//4 + 60, center=True, size=36)
+        self.draw_bubble_text("A Cheesy Adventure", SCREEN_WIDTH//2, SCREEN_HEIGHT//4 + 60, center=True, size=36)
         
-        # Instructions with button styling
+        # Instructions with cheese-themed button styling
         instructions = [
-            ("Press SPACE/ENTER to Start", MINT_GREEN),
-            ("Press L for Level Select", SOFT_YELLOW),
-            ("Arrows/WASD to Move, SPACE to Jump", PEACH),
-            ("ESC to Quit", CORAL)
+            ("Press SPACE/ENTER to Start", SOFT_YELLOW),  # Cheese yellow
+            ("Press L for Level Select", LIGHT_BROWN),    # Cheese crust
+            ("Arrows/WASD to Move, SPACE to Jump", PEACH), # Cheese wheel
+            ("ESC to Quit", CORAL)                        # Burnt cheese
         ]
         
         start_y = SCREEN_HEIGHT//2 + 40

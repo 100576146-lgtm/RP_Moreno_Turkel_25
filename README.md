@@ -1,4 +1,4 @@
-# Mario-Style Platformer Game
+# Rat Race - A Cheesy Adventure
 
 A pygame-based platformer game inspired by the original Mario games.
 

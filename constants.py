@@ -40,6 +40,7 @@ MOUNTAIN_BLUE = (119, 136, 153)
 
 # The Big Melt-down
 CHEESE_YELLOW = (255, 215, 0)
+MELTED_CHEESE = (255, 200, 80)  # Slightly different cheese color for level 1
 
 # Moss-t Be Joking
 MOSS_GREEN = (138, 154, 91)

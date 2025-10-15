@@ -1,7 +1,7 @@
 import random
 import math
 import pygame
-from constants import GRAVITY, JUMP_STRENGTH, PLAYER_SPEED, ENEMY_SPEED, LEVEL_WIDTH, LEVEL_HEIGHT, WHITE, BLACK, SOFT_PURPLE, LIGHT_PURPLE, SOFT_PINK, DUSTY_ROSE, PEACH, CORAL, MOUNTAIN_BLUE, BEIGE, LIGHT_BROWN, SAGE_GREEN, PASTEL_GREEN, MINT_GREEN, SOFT_YELLOW, SOFT_BLUE, CREAM, CHEESE_YELLOW, BURNT_ORANGE, SOOT_GREY, MOSS_GREEN, DARK_BROWN, WET_ROCK_GREY, STEEL_GREY, DARK_GREY, SILVER, MOLTEN_ORANGE, ICE_BLUE, SNOW_WHITE, ECTOPLASM_GREEN, GHOSTLY_WHITE, SHADOW_GREY, GLITCH_GREEN, ERROR_RED, MOZZARELLA_WHITE, TOMATO_RED, BASIL_GREEN, CONCRETE_GREY, IVY_GREEN, DEEP_SEA_BLUE, DARK_BLUE, SEAWEED_GREEN, SKY_BLUE
+from constants import GRAVITY, JUMP_STRENGTH, PLAYER_SPEED, ENEMY_SPEED, LEVEL_WIDTH, LEVEL_HEIGHT, WHITE, BLACK, SOFT_PURPLE, LIGHT_PURPLE, SOFT_PINK, DUSTY_ROSE, PEACH, CORAL, MOUNTAIN_BLUE, BEIGE, LIGHT_BROWN, SAGE_GREEN, PASTEL_GREEN, MINT_GREEN, SOFT_YELLOW, SOFT_BLUE, CREAM, CHEESE_YELLOW, MELTED_CHEESE, BURNT_ORANGE, SOOT_GREY, MOSS_GREEN, DARK_BROWN, WET_ROCK_GREY, STEEL_GREY, DARK_GREY, SILVER, MOLTEN_ORANGE, ICE_BLUE, SNOW_WHITE, ECTOPLASM_GREEN, GHOSTLY_WHITE, SHADOW_GREY, GLITCH_GREEN, ERROR_RED, MOZZARELLA_WHITE, TOMATO_RED, BASIL_GREEN, CONCRETE_GREY, IVY_GREEN, DEEP_SEA_BLUE, DARK_BLUE, SEAWEED_GREEN, SKY_BLUE
 
 # Additional colors for new enemies
 RED = (255, 0, 0)
@@ -41,6 +41,8 @@ class Player(pygame.sprite.Sprite):
         self.star_timer = 0
         self.star_duration = 600  # 10 seconds at 60 FPS
         self.glow_pulse = 0
+        
+        # Cheese globs now work like rocks - no stuck timer needed
         
         # Set initial animation
         self.sprite_animator.set_animation("idle", self.facing_right)
@@ -184,12 +186,24 @@ class Player(pygame.sprite.Sprite):
         self.on_ground = False
         collisions = pygame.sprite.spritecollide(self, platforms, False)
         for platform in collisions:
+            # Skip collision with space rocks and falling clouds (visual only)
+            if hasattr(platform, 'platform_type') and platform.platform_type in ["space_rock", "falling_cloud"]:
+                continue
             if self.vel_y > 0:
+                # Check if platform is solid (for fading platforms)
+                if hasattr(platform, 'is_solid') and not platform.is_solid:
+                    continue  # Skip collision with faded platforms
                 self.rect.bottom = platform.rect.top
                 self.vel_y = 0
                 self.on_ground = True
                 self.jump_count = 0
+                # Trigger falling cloud platforms
+                if hasattr(platform, 'trigger_fall'):
+                    platform.trigger_fall()
             elif self.vel_y < 0:
+                # Check if platform is solid (for fading platforms)
+                if hasattr(platform, 'is_solid') and not platform.is_solid:
+                    continue  # Skip collision with faded platforms
                 self.rect.top = platform.rect.bottom
                 self.vel_y = 0
         if self.rect.left < 0:
@@ -240,32 +254,32 @@ class Player(pygame.sprite.Sprite):
                 if self.sound_manager:
                     self.sound_manager.play('hit')
                 return "hit"
-        powerup_collisions = pygame.sprite.spritecollide(self, powerups, True)
+            # Check if this was a key enemy
+            if hasattr(enemy, 'enemy_type') and enemy.enemy_type == "key_enemy":
+                return "key_enemy_killed"
+        powerup_collisions = pygame.sprite.spritecollide(self, powerups, False)
         if powerup_collisions:
+            # Check powerup type before removing it
+            powerup = powerup_collisions[0]
+            powerup_type = getattr(powerup, 'powerup_type', 'coin')
+            
+            # Remove the powerup
+            powerup.kill()
+            
             if self.sound_manager:
                 self.sound_manager.play('coin')
-            return "powerup"
+            
+            # Return the powerup type
+            if powerup_type == "rainbow_star":
+                return "rainbow_star"
+            else:
+                return "powerup"
+        # Cheese now works like rocks - no stuck timer needed
+        
         obstacle_collisions = pygame.sprite.spritecollide(self, obstacles, False)
         if obstacle_collisions and not self.star_active:
-            # Special handling for sticky cheese globs
             hit = obstacle_collisions[0]
-            if getattr(hit, 'obstacle_type', '') == 'cheese_glob':
-                # Stick the player in place for ~2 seconds (120 frames)
-                if not hasattr(self, 'stuck_timer') or self.stuck_timer <= 0:
-                    self.stuck_timer = 120
-                # While stuck: zero velocity and prevent jumping
-                self.vel_x = 0
-                self.vel_y = 0
-                self.on_ground = True
-                self.animation_state = "idle"
-                self.sprite_animator.set_animation("idle", self.facing_right)
-                self.stuck_timer -= 1
-                # Slight visual sink into glob
-                self.rect.bottom = hit.rect.top + 6
-                # No damage result; allow game to continue
-                self.draw_character()
-                return None
-            elif getattr(hit, 'obstacle_type', '') in ('jungle_plant', 'rock'):
+            if getattr(hit, 'obstacle_type', '') in ('jungle_plant', 'rock', 'cheese_glob'):
                 # Jungle plant or rock: block movement without damage
                 if self.vel_x > 0:
                     self.rect.right = hit.rect.left
@@ -443,6 +457,86 @@ class Enemy(pygame.sprite.Sprite):
             pygame.draw.circle(self.image, YELLOW, (w//2 + 2 + offset_x, h//2 - 10 + offset_y), 2)
             # Tail
             pygame.draw.line(self.image, base_c, (w//2 + offset_x, h//2 + 6 + offset_y), (w//2 + offset_x, h//2 + 12 + offset_y), 3)
+        elif self.enemy_type == "key_enemy":
+            # Computer virus worm
+            # Worm body (segmented)
+            segments = 6
+            segment_width = w // segments
+            for i in range(segments):
+                seg_x = i * segment_width + offset_x
+                seg_y = h//2 - 6 + offset_y + int(3 * math.sin(i * 0.5))
+                # Alternating colors for worm segments
+                if i % 2 == 0:
+                    seg_color = GLITCH_GREEN
+                else:
+                    seg_color = (0, 255, 0)  # Bright green
+                pygame.draw.ellipse(self.image, seg_color, (seg_x, seg_y, segment_width-2, 12))
+                pygame.draw.ellipse(self.image, BLACK, (seg_x, seg_y, segment_width-2, 12), 1)
+            
+            # Worm head
+            head_x = w//2 - 8 + offset_x
+            head_y = h//2 - 8 + offset_y
+            pygame.draw.circle(self.image, GLITCH_GREEN, (head_x, head_y), 8)
+            pygame.draw.circle(self.image, BLACK, (head_x, head_y), 8, 2)
+            
+            # Eyes
+            pygame.draw.circle(self.image, ERROR_RED, (head_x - 3, head_y - 2), 2)
+            pygame.draw.circle(self.image, ERROR_RED, (head_x + 3, head_y - 2), 2)
+            
+            # Virus spikes
+            for i in range(4):
+                spike_x = head_x + int(6 * math.cos(i * math.pi / 2))
+                spike_y = head_y + int(6 * math.sin(i * math.pi / 2))
+                pygame.draw.circle(self.image, ERROR_RED, (spike_x, spike_y), 2)
+            
+            # Key indicator (if this enemy has a key)
+            if hasattr(self, 'key_color'):
+                key_x = w//2 + offset_x
+                key_y = h - 10 + offset_y
+                if self.key_color == "red":
+                    key_color = ERROR_RED
+                else:
+                    key_color = (0, 0, 255)  # Blue
+                pygame.draw.circle(self.image, key_color, (key_x, key_y), 4)
+                pygame.draw.circle(self.image, BLACK, (key_x, key_y), 4, 1)
+        elif self.enemy_type == "bonus_animal":
+            # Special animal enemies for bonus room
+            # Draw a cute but dangerous animal
+            center_x, center_y = w//2 + offset_x, h//2 + offset_y
+            
+            # Animal body
+            pygame.draw.ellipse(self.image, (139, 69, 19), (center_x - 12, center_y - 8, 24, 16))  # Brown body
+            pygame.draw.ellipse(self.image, BLACK, (center_x - 12, center_y - 8, 24, 16), 2)
+            
+            # Animal head
+            pygame.draw.circle(self.image, (160, 82, 45), (center_x - 8, center_y - 2), 8)  # Lighter brown head
+            pygame.draw.circle(self.image, BLACK, (center_x - 8, center_y - 2), 8, 2)
+            
+            # Ears
+            pygame.draw.circle(self.image, (139, 69, 19), (center_x - 12, center_y - 6), 4)
+            pygame.draw.circle(self.image, (139, 69, 19), (center_x - 4, center_y - 6), 4)
+            pygame.draw.circle(self.image, BLACK, (center_x - 12, center_y - 6), 4, 1)
+            pygame.draw.circle(self.image, BLACK, (center_x - 4, center_y - 6), 4, 1)
+            
+            # Eyes
+            pygame.draw.circle(self.image, YELLOW, (center_x - 10, center_y - 4), 2)
+            pygame.draw.circle(self.image, YELLOW, (center_x - 6, center_y - 4), 2)
+            pygame.draw.circle(self.image, BLACK, (center_x - 10, center_y - 4), 2, 1)
+            pygame.draw.circle(self.image, BLACK, (center_x - 6, center_y - 4), 2, 1)
+            
+            # Snout
+            pygame.draw.circle(self.image, (139, 69, 19), (center_x - 4, center_y + 1), 3)
+            pygame.draw.circle(self.image, BLACK, (center_x - 4, center_y + 1), 3, 1)
+            
+            # Tail
+            pygame.draw.ellipse(self.image, (139, 69, 19), (center_x + 8, center_y - 2, 8, 4))
+            pygame.draw.ellipse(self.image, BLACK, (center_x + 8, center_y - 2, 8, 4), 1)
+            
+            # Special sparkles (magical bonus animal)
+            for i in range(3):
+                sparkle_x = center_x + random.randint(-15, 15)
+                sparkle_y = center_y + random.randint(-10, 10)
+                pygame.draw.circle(self.image, (255, 215, 0), (sparkle_x, sparkle_y), 1)  # Gold sparkles
         else:
             base_c = colors[0]
             sec_c = colors[1] if len(colors) > 1 else LIGHT_PURPLE
@@ -464,40 +558,40 @@ class Enemy(pygame.sprite.Sprite):
         else:
             # Ground enemies follow normal physics
             self.vel_y += GRAVITY
-            if self.enemy_type == "jumper":
-                self.jump_timer += 1
-                if self.jump_timer >= self.jump_cooldown and self.vel_y == 0:
-                    self.vel_y = JUMP_STRENGTH * 0.7
-                    self.jump_timer = 0
-                    self.jump_cooldown = random.randint(60, 120)
+        if self.enemy_type == "jumper":
+            self.jump_timer += 1
+            if self.jump_timer >= self.jump_cooldown and self.vel_y == 0:
+                self.vel_y = JUMP_STRENGTH * 0.7
+                self.jump_timer = 0
+                self.jump_cooldown = random.randint(60, 120)
             
             # Horizontal movement
-            self.rect.x += int(self.vel_x)
-            collisions = pygame.sprite.spritecollide(self, platforms, False)
-            for platform in collisions:
-                if self.vel_x > 0:
-                    self.rect.right = platform.rect.left
-                    self.vel_x = -self.speed
-                elif self.vel_x < 0:
-                    self.rect.left = platform.rect.right
-                    self.vel_x = self.speed
+        self.rect.x += int(self.vel_x)
+        collisions = pygame.sprite.spritecollide(self, platforms, False)
+        for platform in collisions:
+            if self.vel_x > 0:
+                self.rect.right = platform.rect.left
+                self.vel_x = -self.speed
+            elif self.vel_x < 0:
+                self.rect.left = platform.rect.right
+                self.vel_x = self.speed
             
             # Vertical movement
-            self.rect.y += int(self.vel_y)
-            collisions = pygame.sprite.spritecollide(self, platforms, False)
-            for platform in collisions:
-                if self.vel_y > 0:
-                    self.rect.bottom = platform.rect.top
-                    self.vel_y = 0
-                elif self.vel_y < 0:
-                    self.rect.top = platform.rect.bottom
-                    self.vel_y = 0
+        self.rect.y += int(self.vel_y)
+        collisions = pygame.sprite.spritecollide(self, platforms, False)
+        for platform in collisions:
+            if self.vel_y > 0:
+                self.rect.bottom = platform.rect.top
+                self.vel_y = 0
+            elif self.vel_y < 0:
+                self.rect.top = platform.rect.bottom
+                self.vel_y = 0
             
             # Boundary checks
-            if self.rect.left < 0 or self.rect.right > LEVEL_WIDTH:
-                self.vel_x *= -1
-            if self.rect.top > LEVEL_HEIGHT:
-                self.kill()
+        if self.rect.left < 0 or self.rect.right > LEVEL_WIDTH:
+            self.vel_x *= -1
+        if self.rect.top > LEVEL_HEIGHT:
+            self.kill()
     
     def update_air_enemy(self):
         """Update air enemies with flight patterns."""
@@ -564,11 +658,11 @@ class Checkpoint(pygame.sprite.Sprite):
         w, h = self.image.get_size()
         theme_name = self.theme.get('name', '')
         if theme_name == "The Big Melt-down":
-            # Draw a cheese wheel checkpoint
+            # Draw a cheese wheel checkpoint with slightly different color
             cx, cy = w//2, h//2 + 10
             radius = min(w, h)//2 - 10
             body = pygame.Surface((w, h), pygame.SRCALPHA)
-            pygame.draw.circle(body, CHEESE_YELLOW, (cx, cy), radius)
+            pygame.draw.circle(body, MELTED_CHEESE, (cx, cy), radius)
             pygame.draw.circle(body, BURNT_ORANGE, (cx, cy), radius, 4)
             # Wedge cut
             pygame.draw.polygon(body, (0,0,0,0), [(cx, cy), (cx+radius, cy-10), (cx+radius, cy+10)])
@@ -603,23 +697,59 @@ class Checkpoint(pygame.sprite.Sprite):
                 pygame.draw.circle(self.image, DARK_BROWN, (w//2 - 10, h-50), 5)
                 pygame.draw.circle(self.image, DARK_BROWN, (w//2 + 10, h-48), 5)
         elif theme_name == "Smelted Dreams":
-            # Draw a stone/metal archway as checkpoint
-            arch = pygame.Surface((w, h), pygame.SRCALPHA)
-            base_rect = pygame.Rect(10, h-40, w-20, 30)
-            pygame.draw.rect(arch, DARK_GREY, base_rect)
-            pygame.draw.rect(arch, BLACK, base_rect, 2)
-            # Arch top
-            pygame.draw.arc(arch, STEEL_GREY, (10, 10, w-20, h-20), 3.14, 0, 8)
-            pygame.draw.arc(arch, BLACK, (10, 10, w-20, h-20), 3.14, 0, 2)
-            # Molten glow accents
-            pygame.draw.arc(arch, MOLTEN_ORANGE, (14, 14, w-28, h-28), 3.14, 0, 3)
-            self.image.blit(arch, (0, 0))
+            # Draw a candelabra/lantern checkpoint
+            candelabra = pygame.Surface((w, h), pygame.SRCALPHA)
+            
+            # Base (stone pedestal)
+            base_rect = pygame.Rect(15, h-35, w-30, 25)
+            pygame.draw.rect(candelabra, DARK_GREY, base_rect)
+            pygame.draw.rect(candelabra, BLACK, base_rect, 2)
+            
+            # Main pillar
+            pillar_rect = pygame.Rect(w//2-4, h-60, 8, 30)
+            pygame.draw.rect(candelabra, STEEL_GREY, pillar_rect)
+            pygame.draw.rect(candelabra, BLACK, pillar_rect, 1)
+            
+            # Candelabra arms (3 arms)
+            arm_positions = [w//2-12, w//2, w//2+12]
+            for i, arm_x in enumerate(arm_positions):
+                # Arm extending from pillar
+                arm_y = h-50
+                pygame.draw.line(candelabra, STEEL_GREY, (w//2, arm_y), (arm_x, arm_y-15), 3)
+                pygame.draw.line(candelabra, BLACK, (w//2, arm_y), (arm_x, arm_y-15), 1)
+                
+                # Candle holder
+                pygame.draw.circle(candelabra, DARK_GREY, (arm_x, arm_y-15), 4)
+                pygame.draw.circle(candelabra, BLACK, (arm_x, arm_y-15), 4, 1)
+                
+                # Candle
+                pygame.draw.rect(candelabra, CREAM, (arm_x-2, arm_y-25, 4, 10))
+                pygame.draw.rect(candelabra, BLACK, (arm_x-2, arm_y-25, 4, 10), 1)
+                
+                # Flame
+                flame_points = [
+                    (arm_x, arm_y-25),  # Bottom of flame
+                    (arm_x-2, arm_y-30),  # Left tip
+                    (arm_x, arm_y-32),  # Top tip
+                    (arm_x+2, arm_y-30),  # Right tip
+                ]
+                pygame.draw.polygon(candelabra, (255, 150, 0), flame_points)
+                pygame.draw.polygon(candelabra, (255, 200, 60), flame_points[1:])  # Inner flame
+            
+            self.image.blit(candelabra, (0, 0))
+            
+            # Activation effect - make flames brighter
             if self.activated:
-                # Small torch flames on sides when activated
-                pygame.draw.polygon(self.image, (255,120,0), [(16, h-50), (20, h-70), (24, h-50)])
-                pygame.draw.polygon(self.image, (255,200,60), [(18, h-50), (20, h-62), (22, h-50)])
-                pygame.draw.polygon(self.image, (255,120,0), [(w-24, h-50), (w-20, h-70), (w-16, h-50)])
-                pygame.draw.polygon(self.image, (255,200,60), [(w-22, h-50), (w-20, h-62), (w-18, h-50)])
+                for arm_x in arm_positions:
+                    # Brighter flames when activated
+                    flame_points = [
+                        (arm_x, arm_y-25),  # Bottom of flame
+                        (arm_x-3, arm_y-32),  # Left tip (bigger)
+                        (arm_x, arm_y-35),  # Top tip (bigger)
+                        (arm_x+3, arm_y-32),  # Right tip (bigger)
+                    ]
+                    pygame.draw.polygon(self.image, (255, 100, 0), flame_points)
+                    pygame.draw.polygon(self.image, (255, 250, 100), flame_points[1:])  # Brighter inner flame
         elif theme_name == "Frost and Furious":
             # Draw an igloo checkpoint
             igloo = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -639,6 +769,101 @@ class Checkpoint(pygame.sprite.Sprite):
             if self.activated:
                 # Snow sparkle on top when activated
                 pygame.draw.circle(self.image, SNOW_WHITE, (cx, cy - radius - 2), 4)
+        elif theme_name == "Boo Who?":
+            # Draw a spaceship checkpoint
+            spaceship = pygame.Surface((w, h), pygame.SRCALPHA)
+            
+            # Spaceship body (sleek oval shape)
+            ship_center_x, ship_center_y = w//2, h-40
+            ship_width, ship_height = 50, 25
+            pygame.draw.ellipse(spaceship, STEEL_GREY, (ship_center_x - ship_width//2, ship_center_y - ship_height//2, ship_width, ship_height))
+            pygame.draw.ellipse(spaceship, BLACK, (ship_center_x - ship_width//2, ship_center_y - ship_height//2, ship_width, ship_height), 2)
+            
+            # Spaceship nose (pointed front)
+            nose_points = [
+                (ship_center_x + ship_width//2, ship_center_y),  # Front center
+                (ship_center_x + ship_width//2 + 15, ship_center_y - 8),  # Top point
+                (ship_center_x + ship_width//2 + 15, ship_center_y + 8),  # Bottom point
+            ]
+            pygame.draw.polygon(spaceship, STEEL_GREY, nose_points)
+            pygame.draw.polygon(spaceship, BLACK, nose_points, 2)
+            
+            # Cockpit window
+            pygame.draw.ellipse(spaceship, ECTOPLASM_GREEN, (ship_center_x - 8, ship_center_y - 6, 16, 12))
+            pygame.draw.ellipse(spaceship, BLACK, (ship_center_x - 8, ship_center_y - 6, 16, 12), 1)
+            
+            # Engine exhausts
+            for offset in [-12, -4, 4, 12]:
+                exhaust_x = ship_center_x + offset
+                exhaust_y = ship_center_y + ship_height//2 + 5
+                pygame.draw.rect(spaceship, DARK_GREY, (exhaust_x - 2, exhaust_y, 4, 8))
+                pygame.draw.rect(spaceship, BLACK, (exhaust_x - 2, exhaust_y, 4, 8), 1)
+            
+            # Landing gear/stand
+            stand_rect = pygame.Rect(w//2 - 15, h-25, 30, 15)
+            pygame.draw.rect(spaceship, DARK_GREY, stand_rect)
+            pygame.draw.rect(spaceship, BLACK, stand_rect, 2)
+            
+            self.image.blit(spaceship, (0, 0))
+            
+            # Activation effect - glowing lights
+            if self.activated:
+                # Glowing navigation lights
+                pygame.draw.circle(self.image, (0, 255, 0), (ship_center_x - 20, ship_center_y - 10), 3)  # Green light
+                pygame.draw.circle(self.image, (255, 0, 0), (ship_center_x + 20, ship_center_y - 10), 3)  # Red light
+                pygame.draw.circle(self.image, (0, 0, 255), (ship_center_x, ship_center_y - 15), 3)  # Blue light
+                
+                # Glowing engine exhausts
+                for offset in [-12, -4, 4, 12]:
+                    exhaust_x = ship_center_x + offset
+                    exhaust_y = ship_center_y + ship_height//2 + 8
+                    pygame.draw.circle(self.image, (255, 150, 0), (exhaust_x, exhaust_y), 2)  # Glowing exhaust
+        elif theme_name == "404: Floor Not Found":
+            # Draw a computer checkpoint
+            computer = pygame.Surface((w, h), pygame.SRCALPHA)
+            
+            # Monitor screen
+            screen_rect = pygame.Rect(10, 10, w-20, h-30)
+            pygame.draw.rect(computer, BLACK, screen_rect)
+            pygame.draw.rect(computer, GLITCH_GREEN, screen_rect, 2)
+            
+            # Screen content (code-like)
+            for i in range(0, h-40, 8):
+                code_line = "".join(random.choice(["0", "1", "A", "B", "C", "D", "E", "F"]) for _ in range(8))
+                font_size = 8
+                for j, char in enumerate(code_line[:6]):  # Limit to fit screen
+                    char_x = 15 + j * 8
+                    char_y = 15 + i
+                    if char_x < w-10 and char_y < h-20:
+                        pygame.draw.rect(computer, GLITCH_GREEN, (char_x, char_y, 6, 6))
+            
+            # Monitor stand
+            stand_rect = pygame.Rect(w//2 - 10, h-25, 20, 15)
+            pygame.draw.rect(computer, STEEL_GREY, stand_rect)
+            pygame.draw.rect(computer, BLACK, stand_rect, 2)
+            
+            # Keyboard (below monitor)
+            keyboard_rect = pygame.Rect(5, h-20, w-10, 10)
+            pygame.draw.rect(computer, DARK_GREY, keyboard_rect)
+            pygame.draw.rect(computer, BLACK, keyboard_rect, 1)
+            
+            # Key indicators
+            for i in range(0, w-15, 8):
+                key_x = 8 + i
+                if key_x < w-8:
+                    pygame.draw.rect(computer, GLITCH_GREEN, (key_x, h-18, 6, 6), 1)
+            
+            self.image.blit(computer, (0, 0))
+            
+            # Activation effect - screen glitch
+            if self.activated:
+                # Glitch effect overlay
+                for _ in range(10):
+                    glitch_x = random.randint(10, w-20)
+                    glitch_y = random.randint(10, h-30)
+                    glitch_width = random.randint(2, 8)
+                    glitch_height = random.randint(1, 3)
+                    pygame.draw.rect(self.image, ERROR_RED, (glitch_x, glitch_y, glitch_width, glitch_height))
         else:
             
             # House colors
@@ -688,43 +913,76 @@ class Platform(pygame.sprite.Sprite):
         self.rect = pygame.Rect(x, y, width, height)
         self.platform_type = platform_type
         self.original_x = x
+        self.original_y = y
         self.move_offset = 0
         self.theme = theme or {}
+        self.fallen = False  # For falling cloud platforms
+        self.fall_timer = 0  # Timer for falling animation
         self.draw_platform(width, height)
 
     def draw_platform(self, width, height):
-        # Use theme-based styling
-        theme_name = self.theme.get('name', 'default')
-        
-        if theme_name == "The Big Melt-down":
-            self.draw_cheese_platform(width, height)
-        elif theme_name == "Moss-t Be Joking":
-            self.draw_mossy_platform(width, height)
-        elif theme_name == "Smelted Dreams":
-            self.draw_metal_platform(width, height)
-            # Chance to overlay flames to indicate 'on fire'
-            import random
-            if random.random() < 0.35:
-                self._overlay_flames(width, height)
-        elif theme_name == "Frost and Furious":
-            self.draw_ice_platform(width, height)
-        elif theme_name == "Boo Who?":
-            self.draw_ghost_platform(width, height)
-        elif theme_name == "404: Floor Not Found":
-            self.draw_digital_platform(width, height)
-        elif theme_name == "Pasta La Vista":
-            self.draw_pasta_platform(width, height)
-        elif theme_name == "Concrete Jungle":
+        # Check for specific platform types first
+        if self.platform_type == "tree_block":
+            self.draw_tree_block(width, height)
+        elif self.platform_type == "rock_block":
+            self.draw_rock_block(width, height)
+        elif self.platform_type == "ice_shard":
+            self.draw_ice_shard(width, height)
+        elif self.platform_type == "falling_cloud":
+            self.draw_falling_cloud(width, height)
+        elif self.platform_type == "space_rock":
+            self.draw_space_rock(width, height)
+        elif self.platform_type == "tetris_moving":
+            self.draw_tetris_platform(width, height)
+        elif self.platform_type == "fading_platform":
+            self.draw_fading_platform(width, height)
+        elif self.platform_type == "golden_platform":
+            self.draw_golden_platform(width, height)
+        elif self.platform_type == "rainbow_platform":
+            self.draw_rainbow_platform(width, height)
+        elif self.platform_type == "pasta_slide":
+            self.draw_pasta_slide(width, height)
+        elif self.platform_type == "pasta_moving":
+            self.draw_pasta_moving(width, height)
+        elif self.platform_type == "concrete_platform":
             self.draw_concrete_platform(width, height)
-        elif theme_name == "Kraken Me Up":
-            self.draw_underwater_platform(width, height)
+        elif self.platform_type == "fire_escape":
+            self.draw_fire_escape(width, height)
+        elif self.platform_type == "neon_platform":
+            self.draw_neon_platform(width, height)
         else:
-            # Default platform styling
-            self.draw_default_platform(width, height)
+            # Use theme-based styling for regular platforms
+            theme_name = self.theme.get('name', 'default')
+            
+            if theme_name == "The Big Melt-down":
+                self.draw_cheese_platform(width, height)
+            elif theme_name == "Moss-t Be Joking":
+                self.draw_mossy_platform(width, height)
+            elif theme_name == "Smelted Dreams":
+                self.draw_metal_platform(width, height)
+                # Chance to overlay flames to indicate 'on fire'
+                import random
+                if random.random() < 0.35:
+                    self._overlay_flames(width, height)
+            elif theme_name == "Frost and Furious":
+                self.draw_ice_platform(width, height)
+            elif theme_name == "Boo Who?":
+                self.draw_ghost_platform(width, height)
+            elif theme_name == "404: Floor Not Found":
+                self.draw_digital_platform(width, height)
+            elif theme_name == "Pasta La Vista":
+                self.draw_pasta_platform(width, height)
+            elif theme_name == "Concrete Jungle":
+                self.draw_concrete_platform(width, height)
+            elif theme_name == "Kraken Me Up":
+                self.draw_underwater_platform(width, height)
+            else:
+                # Default platform styling
+                self.draw_default_platform(width, height)
     
     def draw_cheese_platform(self, width, height):
-        # Melted cheese theme
-        self.image.fill(CHEESE_YELLOW)
+        # Melted cheese theme with slightly different color
+        self.image.fill(MELTED_CHEESE)
         pygame.draw.rect(self.image, BURNT_ORANGE, (0, 0, width, height), 2)
         # Cheese holes
         for i in range(width // 20):
@@ -734,6 +992,388 @@ class Platform(pygame.sprite.Sprite):
         # Melted edges
         for x in range(0, width, 15):
             pygame.draw.arc(self.image, BURNT_ORANGE, (x, height-8, 15, 12), 0, 3.14, 2)
+    
+    def draw_tree_block(self, width, height):
+        """Draw a tree block platform for Level 2."""
+        # Tree trunk
+        self.image.fill(DARK_BROWN)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 2)
+        
+        # Tree bark texture
+        for x in range(0, width, 8):
+            for y in range(0, height, 6):
+                if random.random() < 0.4:
+                    pygame.draw.circle(self.image, (101, 67, 33), (x + 4, y + 3), 2)
+        
+        # Tree canopy (leaves on top)
+        leaf_height = min(12, height // 2)
+        pygame.draw.rect(self.image, MOSS_GREEN, (0, 0, width, leaf_height))
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, leaf_height), 1)
+        
+        # Leaf texture
+        for i in range(width // 4):
+            leaf_x = random.randint(2, width - 6)
+            leaf_y = random.randint(2, leaf_height - 4)
+            pygame.draw.ellipse(self.image, SAGE_GREEN, (leaf_x, leaf_y, 4, 3))
+    
+    def draw_rock_block(self, width, height):
+        """Draw a rock block platform for Level 2."""
+        # Rock base
+        self.image.fill(WET_ROCK_GREY)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 2)
+        
+        # Rock texture with moss patches
+        for x in range(0, width, 6):
+            for y in range(0, height, 4):
+                if random.random() < 0.3:
+                    # Rock texture
+                    pygame.draw.circle(self.image, DARK_BROWN, (x + 3, y + 2), 1)
+                elif random.random() < 0.15:
+                    # Moss patches
+                    pygame.draw.circle(self.image, MOSS_GREEN, (x + 3, y + 2), 2)
+        
+        # Moss on edges
+        pygame.draw.line(self.image, MOSS_GREEN, (0, 0), (width, 0), 2)
+        pygame.draw.line(self.image, SAGE_GREEN, (2, 2), (width-2, 2), 1)
+    
+    def draw_ice_shard(self, width, height):
+        """Draw an ice shard platform for Level 4."""
+        # Ice shard base
+        self.image.fill(ICE_BLUE)
+        pygame.draw.rect(self.image, SNOW_WHITE, (0, 0, width, height), 2)
+        
+        # Ice crystal texture
+        for x in range(0, width, 8):
+            for y in range(0, height, 6):
+                if random.random() < 0.6:
+                    # Crystal sparkles
+                    pygame.draw.circle(self.image, SNOW_WHITE, (x + 4, y + 3), 1)
+        
+        # Sharp ice edges
+        pygame.draw.line(self.image, SNOW_WHITE, (0, 0), (width, 0), 3)
+        pygame.draw.line(self.image, ICE_BLUE, (0, height-1), (width, height-1), 1)
+        
+        # Ice shard points on top
+        for x in range(0, width, 12):
+            pygame.draw.polygon(self.image, SNOW_WHITE, [(x, height), (x+6, height-8), (x+12, height)])
+    
+    def draw_falling_cloud(self, width, height):
+        """Draw a falling cloud platform for Level 5."""
+        # Cloud base (fluffy white cloud)
+        self.image.fill(WHITE)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 2)
+        
+        # Cloud puffs
+        for i in range(0, width, 20):
+            puff_size = random.randint(8, 16)
+            puff_x = i + random.randint(-5, 5)
+            puff_y = random.randint(height//4, height*3//4)
+            pygame.draw.circle(self.image, (240, 240, 240), (puff_x, puff_y), puff_size)
+            pygame.draw.circle(self.image, BLACK, (puff_x, puff_y), puff_size, 1)
+        
+        # Warning effect - make it look unstable
+        for x in range(0, width, 15):
+            pygame.draw.line(self.image, (255, 200, 200), (x, 2), (x+10, 2), 1)
+            pygame.draw.line(self.image, (255, 200, 200), (x, height-3), (x+10, height-3), 1)
+    
+    def draw_space_rock(self, width, height):
+        """Draw a large space rock for Level 5."""
+        # Rock base (dark grey/black space rock)
+        self.image.fill(DARK_GREY)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        
+        # Space rock texture with craters
+        for x in range(0, width, 12):
+            for y in range(0, height, 8):
+                if random.random() < 0.4:
+                    # Rock texture
+                    pygame.draw.circle(self.image, (40, 40, 40), (x + 6, y + 4), random.randint(1, 3))
+                elif random.random() < 0.15:
+                    # Craters
+                    crater_size = random.randint(3, 6)
+                    pygame.draw.circle(self.image, BLACK, (x + 6, y + 4), crater_size)
+                    pygame.draw.circle(self.image, (20, 20, 20), (x + 6, y + 4), crater_size-1)
+        
+        # Space weathering effects
+        for x in range(0, width, 8):
+            for y in range(0, height, 6):
+                if random.random() < 0.1:
+                    # Glowing mineral deposits
+                    pygame.draw.circle(self.image, (100, 100, 150), (x + 4, y + 3), 1)
+        
+        # Sharp edges
+        pygame.draw.line(self.image, BLACK, (0, 0), (width, 0), 2)
+        pygame.draw.line(self.image, BLACK, (0, height-1), (width, height-1), 2)
+    
+    def draw_tetris_platform(self, width, height):
+        """Draw a Tetris-like moving platform for Level 6."""
+        # Neon colors for computer theme
+        neon_colors = [(0, 255, 255), (255, 0, 255), (0, 255, 0), (255, 255, 0), (255, 0, 0)]
+        base_color = random.choice(neon_colors)
+        
+        # Platform base
+        self.image.fill(base_color)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        
+        # Tetris block pattern
+        block_size = 20
+        for x in range(0, width, block_size):
+            for y in range(0, height, block_size):
+                # Create pixelated block effect
+                if (x // block_size + y // block_size) % 2 == 0:
+                    pygame.draw.rect(self.image, (255, 255, 255), (x, y, block_size, block_size), 1)
+        
+        # Neon glow effect
+        pygame.draw.rect(self.image, base_color, (2, 2, width-4, height-4), 2)
+        
+        # Grid lines for Tetris effect
+        for x in range(0, width, block_size):
+            pygame.draw.line(self.image, BLACK, (x, 0), (x, height), 1)
+        for y in range(0, height, block_size):
+            pygame.draw.line(self.image, BLACK, (0, y), (width, y), 1)
+    
+    def draw_fading_platform(self, width, height):
+        """Draw a fading platform for Level 6."""
+        # Initialize fade properties if not set
+        if not hasattr(self, 'fade_timer'):
+            self.fade_timer = 0
+        if not hasattr(self, 'is_solid'):
+            self.is_solid = True
+        
+        # Neon blue color
+        base_color = (0, 100, 255)
+        
+        # Calculate alpha based on fade timer
+        fade_cycle = 120  # 2 seconds at 60 FPS
+        fade_phase = (self.fade_timer % fade_cycle) / fade_cycle
+        
+        if fade_phase < 0.5:
+            # Fade out
+            alpha = int(255 * (1 - fade_phase * 2))
+            self.is_solid = False
+        else:
+            # Fade in
+            alpha = int(255 * ((fade_phase - 0.5) * 2))
+            self.is_solid = True
+        
+        # Create surface with alpha
+        self.image.fill((0, 0, 0, 0))  # Transparent background
+        temp_surface = pygame.Surface((width, height))
+        temp_surface.fill(base_color)
+        temp_surface.set_alpha(alpha)
+        
+        # Draw platform with alpha
+        pygame.draw.rect(temp_surface, base_color, (0, 0, width, height))
+        pygame.draw.rect(temp_surface, BLACK, (0, 0, width, height), 2)
+        
+        # Grid pattern
+        for x in range(0, width, 10):
+            pygame.draw.line(temp_surface, BLACK, (x, 0), (x, height), 1)
+        for y in range(0, height, 10):
+            pygame.draw.line(temp_surface, BLACK, (0, y), (width, y), 1)
+        
+        self.image.blit(temp_surface, (0, 0))
+        
+        # Update fade timer
+        self.fade_timer += 1
+    
+    def draw_golden_platform(self, width, height):
+        """Draw a golden platform for bonus room."""
+        # Gold base
+        self.image.fill((255, 215, 0))  # Gold color
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        
+        # Golden shine effect
+        pygame.draw.rect(self.image, (255, 255, 150), (2, 2, width-4, height-4), 1)
+        pygame.draw.rect(self.image, (255, 255, 200), (4, 4, width-8, height-8), 1)
+        
+        # Gem-like decorations
+        for i in range(0, width, 20):
+            gem_x = i + 10
+            gem_y = height // 2
+            pygame.draw.circle(self.image, (255, 255, 255), (gem_x, gem_y), 3)
+            pygame.draw.circle(self.image, BLACK, (gem_x, gem_y), 3, 1)
+    
+    def draw_rainbow_platform(self, width, height):
+        """Draw a rainbow platform for bonus room."""
+        # Rainbow stripes
+        stripe_height = height // 7
+        colors = [(255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), 
+                 (0, 0, 255), (75, 0, 130), (148, 0, 211)]
+        
+        for i, color in enumerate(colors):
+            stripe_y = i * stripe_height
+            pygame.draw.rect(self.image, color, (0, stripe_y, width, stripe_height))
+        
+        # Border
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        
+        # Sparkle effects
+        for _ in range(5):
+            sparkle_x = random.randint(5, width - 5)
+            sparkle_y = random.randint(5, height - 5)
+            pygame.draw.circle(self.image, WHITE, (sparkle_x, sparkle_y), 2)
+    
+    def draw_pasta_slide(self, width, height):
+        """Draw a pasta slide platform for Level 7."""
+        # Pasta colors
+        pasta_color = PARMESAN_YELLOW
+        sauce_color = (200, 50, 50)  # Red sauce
+        
+        # Create sloped pasta shape
+        self.image.fill(pasta_color)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        
+        # Draw pasta strands
+        for i in range(0, width, 15):
+            strand_x = i
+            strand_height = height - (i // 3)  # Sloped effect
+            pygame.draw.rect(self.image, (255, 255, 255), (strand_x, height - strand_height, 10, strand_height), 1)
+        
+        # Add sauce drips
+        for i in range(0, width, 20):
+            drip_x = i + 10
+            pygame.draw.circle(self.image, sauce_color, (drip_x, height - 5), 3)
+            pygame.draw.circle(self.image, BLACK, (drip_x, height - 5), 3, 1)
+    
+    def draw_pasta_moving(self, width, height):
+        """Draw a moving pasta platform for Level 7."""
+        # Pasta colors
+        pasta_color = PARMESAN_YELLOW
+        meat_color = (150, 100, 80)  # Meatball color
+        
+        # Platform base
+        self.image.fill(pasta_color)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        
+        # Draw meatball chunks on platform
+        for i in range(0, width, 25):
+            chunk_x = i + 12
+            chunk_y = height // 2
+            pygame.draw.circle(self.image, meat_color, (chunk_x, chunk_y), 6)
+            pygame.draw.circle(self.image, BLACK, (chunk_x, chunk_y), 6, 1)
+        
+        # Pasta texture
+        for i in range(0, width, 8):
+            pygame.draw.line(self.image, (255, 255, 255), (i, 0), (i, height), 1)
+    
+    def draw_concrete_platform(self, width, height):
+        """Draw a concrete building ledge for Level 8."""
+        # Concrete colors
+        concrete_color = CONCRETE_GREY
+        rebar_color = (100, 100, 100)
+        
+        # Concrete base
+        self.image.fill(concrete_color)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        
+        # Concrete texture lines
+        for i in range(0, width, 15):
+            pygame.draw.line(self.image, (200, 200, 200), (i, 0), (i, height), 1)
+        
+        # Rebar (steel reinforcement)
+        pygame.draw.rect(self.image, rebar_color, (5, height//2-2, width-10, 4))
+        pygame.draw.rect(self.image, BLACK, (5, height//2-2, width-10, 4), 1)
+        
+        # Rust spots
+        for _ in range(3):
+            rust_x = random.randint(10, width-10)
+            rust_y = random.randint(5, height-5)
+            pygame.draw.circle(self.image, (150, 100, 50), (rust_x, rust_y), 2)
+    
+    def draw_fire_escape(self, width, height):
+        """Draw a fire escape platform for Level 8."""
+        # Metal colors
+        metal_color = STEEL_GREY
+        rust_color = (150, 100, 50)
+        
+        # Metal platform
+        self.image.fill(metal_color)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 2)
+        
+        # Metal grating pattern
+        for i in range(0, width, 8):
+            pygame.draw.line(self.image, BLACK, (i, 0), (i, height), 1)
+        for i in range(0, height, 8):
+            pygame.draw.line(self.image, BLACK, (0, i), (width, i), 1)
+        
+        # Rust spots
+        for _ in range(4):
+            rust_x = random.randint(5, width-5)
+            rust_y = random.randint(5, height-5)
+            pygame.draw.circle(self.image, rust_color, (rust_x, rust_y), 1)
+        
+        # Bolts
+        pygame.draw.circle(self.image, BLACK, (5, 5), 2)
+        pygame.draw.circle(self.image, BLACK, (width-5, 5), 2)
+        pygame.draw.circle(self.image, BLACK, (5, height-5), 2)
+        pygame.draw.circle(self.image, BLACK, (width-5, height-5), 2)
+    
+    def draw_neon_platform(self, width, height):
+        """Draw a glowing neon platform for Level 10."""
+        # Neon colors
+        neon_colors = [(255, 0, 255), (0, 255, 255), (255, 255, 0), (0, 255, 0), (255, 0, 0)]
+        base_color = random.choice(neon_colors)
+        
+        # Platform base
+        self.image.fill(base_color)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        
+        # Neon glow effect
+        pygame.draw.rect(self.image, (255, 255, 255), (2, 2, width-4, height-4), 1)
+        
+        # Circuit pattern
+        for x in range(0, width, 10):
+            for y in range(0, height, 10):
+                if (x // 10 + y // 10) % 2 == 0:
+                    pygame.draw.circle(self.image, (255, 255, 255), (x + 5, y + 5), 1)
+        
+        # Glowing edges
+        pygame.draw.line(self.image, (255, 255, 255), (0, 0), (width, 0), 2)
+        pygame.draw.line(self.image, (255, 255, 255), (0, height-1), (width, height-1), 2)
+    
+    def update(self):
+        """Update platform behavior (for moving and falling platforms)."""
+        if self.platform_type == "moving":
+            # Moving platform logic
+            self.move_offset += 0.02
+            self.rect.x = self.original_x + int(50 * pygame.math.Vector2(1, 0).rotate(self.move_offset * 180 / 3.14159).x)
+        elif self.platform_type == "falling_cloud" and self.fallen:
+            # Falling cloud behavior
+            self.fall_timer += 1
+            # Fall down quickly
+            self.rect.y += 8
+            # Remove cloud after falling for a while
+            if self.fall_timer > 60:  # 1 second at 60 FPS
+                self.kill()
+        elif self.platform_type == "tetris_moving":
+            # Tetris platform movement - up/down and side to side
+            self.move_offset += 0.03
+            # Horizontal movement
+            self.rect.x = self.original_x + int(60 * math.sin(self.move_offset))
+            # Vertical movement (different phase)
+            self.rect.y = self.original_y + int(40 * math.cos(self.move_offset * 0.7))
+        elif self.platform_type == "fading_platform":
+            # Fading platform updates its visual state
+            self.draw_fading_platform(self.rect.width, self.rect.height)
+        elif self.platform_type == "golden_platform":
+            # Golden platforms can move vertically
+            self.move_offset += 0.02
+            self.rect.y = self.original_y + int(30 * math.sin(self.move_offset))
+        elif self.platform_type == "rainbow_platform":
+            # Rainbow platforms can move horizontally
+            self.move_offset += 0.025
+            self.rect.x = self.original_x + int(40 * math.cos(self.move_offset))
+        elif self.platform_type == "pasta_moving":
+            # Pasta moving platforms move vertically to help escape meatballs
+            self.move_offset += 0.03
+            self.rect.y = self.original_y + int(50 * math.sin(self.move_offset))
+    
+    def trigger_fall(self):
+        """Trigger the cloud to start falling."""
+        if self.platform_type == "falling_cloud" and not self.fallen:
+            self.fallen = True
+            self.fall_timer = 0
     
     def draw_mossy_platform(self, width, height):
         # Mossy boulder theme
@@ -941,8 +1581,9 @@ class Platform(pygame.sprite.Sprite):
 
 
 class Powerup(pygame.sprite.Sprite):
-    def __init__(self, x, y):
+    def __init__(self, x, y, powerup_type="coin"):
         super().__init__()
+        self.powerup_type = powerup_type
         self.image = pygame.Surface((24, 24), pygame.SRCALPHA)
         self.rect = self.image.get_rect()
         self.rect.x = x
@@ -950,7 +1591,12 @@ class Powerup(pygame.sprite.Sprite):
         self.float_offset = 0
         self.original_y = y
         self.spin_angle = 0
-        self.draw_coin()
+        if powerup_type == "bonus_coin":
+            self.draw_bonus_coin()
+        elif powerup_type == "rainbow_star":
+            self.draw_rainbow_star()
+        else:
+            self.draw_coin()
 
     def draw_coin(self):
         self.image.fill((0, 0, 0, 0))
@@ -963,6 +1609,63 @@ class Powerup(pygame.sprite.Sprite):
         pygame.draw.line(self.image, CREAM, (9, 9), (15, 15), 1)
         pygame.draw.line(self.image, CREAM, (15, 9), (9, 15), 1)
         pygame.draw.circle(self.image, WHITE, (9, 9), 2)
+    
+    def draw_bonus_coin(self):
+        """Draw a special bonus coin that gives lives and points."""
+        self.image.fill((0, 0, 0, 0))
+        # Larger bonus coin body with rainbow colors
+        pygame.draw.circle(self.image, (255, 215, 0), (12, 12), 12)  # Gold base
+        pygame.draw.circle(self.image, (255, 255, 255), (12, 12), 10)  # White center
+        
+        # Rainbow border
+        colors = [(255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), (0, 0, 255), (75, 0, 130)]
+        for i, color in enumerate(colors):
+            angle = i * 60 * 3.14159 / 180
+            x = 12 + int(9 * math.cos(angle))
+            y = 12 + int(9 * math.sin(angle))
+            pygame.draw.circle(self.image, color, (x, y), 2)
+        
+        # Sparkle effects
+        pygame.draw.circle(self.image, (255, 255, 255), (8, 6), 2)
+        pygame.draw.circle(self.image, (255, 255, 255), (16, 18), 2)
+        pygame.draw.circle(self.image, (255, 255, 255), (6, 16), 1)
+        pygame.draw.circle(self.image, (255, 255, 255), (18, 8), 1)
+    
+    def draw_rainbow_star(self):
+        """Draw a rainbow star powerup."""
+        self.image.fill((0, 0, 0, 0))
+        
+        # Rainbow colors
+        rainbow_colors = [(255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), 
+                         (0, 0, 255), (75, 0, 130), (148, 0, 211)]
+        
+        center_x, center_y = 12, 12
+        
+        # Draw rainbow star
+        star_points = []
+        for i in range(10):  # 5-pointed star
+            angle = i * 36 * 3.14159 / 180
+            if i % 2 == 0:
+                radius = 10  # Outer points
+            else:
+                radius = 5   # Inner points
+            x = center_x + int(radius * math.cos(angle))
+            y = center_y + int(radius * math.sin(angle))
+            star_points.append((x, y))
+        
+        # Draw star with rainbow colors
+        for i, point in enumerate(star_points):
+            color = rainbow_colors[i % len(rainbow_colors)]
+            pygame.draw.circle(self.image, color, point, 2)
+        
+        # Draw main star outline
+        pygame.draw.polygon(self.image, (255, 255, 255), star_points)
+        pygame.draw.polygon(self.image, (0, 0, 0), star_points, 1)
+        
+        # Sparkle effects
+        sparkle_positions = [(6, 6), (18, 6), (6, 18), (18, 18), (12, 3), (12, 21)]
+        for pos in sparkle_positions:
+            pygame.draw.circle(self.image, (255, 255, 255), pos, 1)
 
     def update(self):
         self.float_offset += 0.15
@@ -1258,20 +1961,260 @@ class Obstacle(pygame.sprite.Sprite):
             pygame.draw.ellipse(self.image, WET_ROCK_GREY, (0, 6, 36, 20))
             pygame.draw.ellipse(self.image, DARK_BROWN, (0, 6, 36, 20), 2)
         elif self.obstacle_type == "cheese_glob":
-            # Draw a sticky glob of cheese
-            pygame.draw.ellipse(self.image, CHEESE_YELLOW, (0, 4, 36, 16))
-            pygame.draw.ellipse(self.image, BURNT_ORANGE, (0, 4, 36, 16), 2)
+            # Draw a bigger cheese glob that works like rocks
+            pygame.draw.ellipse(self.image, MELTED_CHEESE, (0, 0, 48, 32))  # Much bigger cheese glob
+            pygame.draw.ellipse(self.image, BURNT_ORANGE, (0, 0, 48, 32), 3)
             # Holes
-            for _ in range(3):
-                r = random.randint(2, 4)
-                x = random.randint(6, 30)
-                y = random.randint(8, 16)
+            for _ in range(6):  # More holes for larger cheese
+                r = random.randint(2, 5)
+                x = random.randint(8, 40)
+                y = random.randint(6, 26)
                 pygame.draw.circle(self.image, SOOT_GREY, (x, y), r)
         elif self.obstacle_type == "lava_pit":
-            # Draw a lava pit (wide, low rectangle with animated-looking waves)
-            pygame.draw.rect(self.image, (90, 20, 10), (0, 0, self.image.get_width(), self.image.get_height()))
-            for i in range(0, self.image.get_width(), 8):
-                pygame.draw.arc(self.image, (255, 100, 0), (i, 2, 12, 12), 0, 3.14, 2)
-                pygame.draw.arc(self.image, (255, 180, 60), (i+2, 6, 12, 12), 0, 3.14, 2)
+            # Draw a realistic lava pit with flames
+            w, h = self.image.get_width(), self.image.get_height()
+            
+            # Lava base (molten rock)
+            pygame.draw.rect(self.image, (60, 15, 5), (0, 0, w, h))
+            pygame.draw.rect(self.image, (90, 25, 8), (0, 0, w, h//2))
+            
+            # Molten lava surface with bubbling effect
+            for i in range(0, w, 6):
+                for j in range(0, h//2, 4):
+                    if random.random() < 0.7:
+                        # Lava bubbles
+                        bubble_color = random.choice([(255, 80, 0), (255, 120, 20), (255, 60, 0)])
+                        pygame.draw.circle(self.image, bubble_color, (i + 3, j + 2), random.randint(1, 3))
+            
+            # Flames rising from lava
+            for i in range(0, w, 8):
+                flame_height = random.randint(8, 16)
+                # Multiple flame layers for realistic effect
+                for layer in range(3):
+                    flame_color = [(255, 150, 0), (255, 100, 0), (255, 50, 0)][layer]
+                    flame_width = 4 - layer
+                    flame_x = i + random.randint(-1, 1)
+                    
+                    # Draw flame shape
+                    flame_points = [
+                        (flame_x, h),  # Bottom center
+                        (flame_x - flame_width//2, h - flame_height//2),  # Left middle
+                        (flame_x, 0),  # Top center
+                        (flame_x + flame_width//2, h - flame_height//2),  # Right middle
+                    ]
+                    pygame.draw.polygon(self.image, flame_color, flame_points)
+            
+            # Hot embers floating around
+            for _ in range(random.randint(2, 4)):
+                ember_x = random.randint(0, w)
+                ember_y = random.randint(0, h//2)
+                ember_color = random.choice([(255, 200, 50), (255, 150, 30), (255, 100, 20)])
+                pygame.draw.circle(self.image, ember_color, (ember_x, ember_y), 1)
+        elif self.obstacle_type.startswith("firewall_"):
+            # Draw computer firewalls
+            firewall_color = self.obstacle_type.split("_")[1]  # "red" or "blue"
+            w, h = self.image.get_width(), self.image.get_height()
+            
+            # Wall base
+            if firewall_color == "red":
+                base_color = (150, 0, 0)
+                glow_color = (255, 0, 0)
+                border_color = (200, 50, 50)
+            else:  # blue
+                base_color = (0, 0, 150)
+                glow_color = (0, 0, 255)
+                border_color = (50, 50, 200)
+            
+            # Firewall body
+            pygame.draw.rect(self.image, base_color, (0, 0, w, h))
+            pygame.draw.rect(self.image, border_color, (0, 0, w, h), 3)
+            
+            # Glowing effect
+            pygame.draw.rect(self.image, glow_color, (2, 2, w-4, h-4), 1)
+            
+            # Circuit pattern
+            for x in range(0, w, 8):
+                for y in range(0, h, 8):
+                    if (x // 8 + y // 8) % 2 == 0:
+                        pygame.draw.circle(self.image, glow_color, (x + 4, y + 4), 1)
+            
+            # Lock symbol
+            lock_x, lock_y = w//2, h//2
+            pygame.draw.rect(self.image, BLACK, (lock_x - 8, lock_y - 6, 16, 12))
+            pygame.draw.rect(self.image, glow_color, (lock_x - 6, lock_y - 4, 12, 8))
+            pygame.draw.rect(self.image, BLACK, (lock_x - 4, lock_y - 8, 8, 6))
+            
+            # "FIREWALL" text effect
+            text_y = h - 15
+            for i, char in enumerate("FIREWALL"):
+                char_x = 5 + i * 6
+                if char_x < w - 5:
+                    pygame.draw.rect(self.image, glow_color, (char_x, text_y, 4, 8))
+        elif self.obstacle_type == "giant_meatball":
+            # Draw a giant rolling meatball
+            w, h = self.image.get_width(), self.image.get_height()
+            
+            # Make meatball very big
+            meatball_size = min(w, h) - 10
+            center_x, center_y = w // 2, h // 2
+            
+            # Main meatball body
+            pygame.draw.circle(self.image, (120, 80, 60), (center_x, center_y), meatball_size // 2)
+            pygame.draw.circle(self.image, BLACK, (center_x, center_y), meatball_size // 2, 3)
+            
+            # Meat texture with darker spots
+            for _ in range(8):
+                spot_x = center_x + random.randint(-meatball_size//3, meatball_size//3)
+                spot_y = center_y + random.randint(-meatball_size//3, meatball_size//3)
+                spot_radius = random.randint(3, 8)
+                pygame.draw.circle(self.image, (100, 60, 40), (spot_x, spot_y), spot_radius)
+            
+            # Sauce drips
+            for _ in range(5):
+                drip_x = center_x + random.randint(-meatball_size//2, meatball_size//2)
+                drip_y = center_y + meatball_size//2 - 5
+                pygame.draw.circle(self.image, (150, 50, 50), (drip_x, drip_y), 4)
+            
+            # Rolling effect - add motion blur
+            for i in range(3):
+                blur_x = center_x + i * 2
+                pygame.draw.circle(self.image, (100, 70, 50), (blur_x, center_y), meatball_size // 2 - 2, 1)
+        elif self.obstacle_type == "floor_spike":
+            # Draw floor spikes for Neon Night
+            w, h = self.image.get_width(), self.image.get_height()
+            
+            # Multiple spikes pointing up
+            spike_positions = [(w//4, h-5), (w//2, h-5), (3*w//4, h-5)]
+            
+            for spike_x, spike_y in spike_positions:
+                # Draw spike pointing up
+                spike_points = [
+                    (spike_x, spike_y),  # Bottom center
+                    (spike_x - 8, spike_y - 20),  # Left tip
+                    (spike_x + 8, spike_y - 20),  # Right tip
+                ]
+                pygame.draw.polygon(self.image, (100, 100, 100), spike_points)
+                pygame.draw.polygon(self.image, BLACK, spike_points, 2)
+        
+        elif self.obstacle_type == "falling_tetris":
+            # Draw falling Tetris pieces
+            w, h = self.image.get_width(), self.image.get_height()
+            
+            # Different Tetris piece shapes
+            tetris_shapes = [
+                # I-piece (line)
+                [(w//2-15, h//2-5), (w//2+15, h//2-5), (w//2+15, h//2+5), (w//2-15, h//2+5)],
+                # T-piece
+                [(w//2-10, h//2-10), (w//2+10, h//2-10), (w//2+10, h//2), (w//2+5, h//2), (w//2+5, h//2+10), (w//2-5, h//2+10), (w//2-5, h//2), (w//2-10, h//2)],
+                # L-piece
+                [(w//2-10, h//2-10), (w//2+10, h//2-10), (w//2+10, h//2+5), (w//2-5, h//2+5), (w//2-5, h//2+10), (w//2-10, h//2+10)]
+            ]
+            
+            shape = random.choice(tetris_shapes)
+            neon_color = random.choice([(255, 0, 255), (0, 255, 255), (255, 255, 0), (0, 255, 0), (255, 0, 0)])
+            pygame.draw.polygon(self.image, neon_color, shape)
+            pygame.draw.polygon(self.image, BLACK, shape, 2)
+        
+        elif self.obstacle_type == "city_train":
+            # Draw city train
+            w, h = self.image.get_width(), self.image.get_height()
+            
+            # Train body
+            pygame.draw.rect(self.image, (150, 150, 150), (0, h//2-15, w, 30))
+            pygame.draw.rect(self.image, BLACK, (0, h//2-15, w, 30), 2)
+            
+            # Train windows
+            for i in range(0, w, 25):
+                pygame.draw.rect(self.image, (100, 150, 255), (i+5, h//2-10, 15, 20))
+                pygame.draw.rect(self.image, BLACK, (i+5, h//2-10, 15, 20), 1)
+            
+            # Train wheels
+            pygame.draw.circle(self.image, BLACK, (15, h//2+10), 8)
+            pygame.draw.circle(self.image, BLACK, (w-15, h//2+10), 8)
+            
+            # Train tracks
+            pygame.draw.line(self.image, (100, 100, 100), (0, h//2+18), (w, h//2+18), 3)
+        
+        elif self.obstacle_type == "spiky_coral":
+            # Draw spiky coral for underwater maze
+            w, h = self.image.get_width(), self.image.get_height()
+            
+            # Coral base
+            pygame.draw.ellipse(self.image, (255, 100, 150), (w//4, h//2, w//2, h//2))
+            pygame.draw.ellipse(self.image, BLACK, (w//4, h//2, w//2, h//2), 2)
+            
+            # Spikes all around
+            for angle in range(0, 360, 30):
+                import math
+                spike_x = w//2 + int(15 * math.cos(math.radians(angle)))
+                spike_y = h//2 + int(15 * math.sin(math.radians(angle)))
+                pygame.draw.circle(self.image, (200, 50, 100), (spike_x, spike_y), 3)
+                pygame.draw.circle(self.image, BLACK, (spike_x, spike_y), 3, 1)
+        
+        elif self.obstacle_type == "evil_fish":
+            # Draw evil fish for underwater maze
+            w, h = self.image.get_width(), self.image.get_height()
+            
+            # Fish body
+            pygame.draw.ellipse(self.image, (255, 50, 50), (w//4, h//4, w//2, h//2))
+            pygame.draw.ellipse(self.image, BLACK, (w//4, h//4, w//2, h//2), 2)
+            
+            # Evil eyes
+            pygame.draw.circle(self.image, (255, 255, 0), (w//2-8, h//2-5), 4)
+            pygame.draw.circle(self.image, (255, 255, 0), (w//2+8, h//2-5), 4)
+            pygame.draw.circle(self.image, BLACK, (w//2-8, h//2-5), 4, 1)
+            pygame.draw.circle(self.image, BLACK, (w//2+8, h//2-5), 4, 1)
+            
+            # Sharp teeth
+            for i in range(3):
+                tooth_x = w//2 - 10 + i * 10
+                pygame.draw.polygon(self.image, (255, 255, 255), 
+                                  [(tooth_x, h//2+5), (tooth_x-3, h//2+15), (tooth_x+3, h//2+15)])
+
+
+class Key(pygame.sprite.Sprite):
+    """Computer firewall key that can be collected."""
+    def __init__(self, x, y, key_color):
+        super().__init__()
+        self.image = pygame.Surface((24, 24), pygame.SRCALPHA)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.key_color = key_color
+        self.float_offset = 0
+        self.original_y = y
+        self.draw_key()
+    
+    def draw_key(self):
+        """Draw the key based on its color."""
+        self.image.fill((0, 0, 0, 0))
+        w, h = self.image.get_size()
+        
+        # Key color
+        if self.key_color == "red":
+            key_color = ERROR_RED
+            glow_color = (255, 100, 100)
+        else:  # blue
+            key_color = (0, 0, 255)
+            glow_color = (100, 100, 255)
+        
+        # Key blade
+        pygame.draw.rect(self.image, key_color, (4, h//2 - 2, 16, 4))
+        pygame.draw.rect(self.image, glow_color, (4, h//2 - 2, 16, 4), 1)
+        
+        # Key head (circular)
+        pygame.draw.circle(self.image, key_color, (w//2, h//2), 8)
+        pygame.draw.circle(self.image, glow_color, (w//2, h//2), 8, 2)
+        
+        # Key hole
+        pygame.draw.circle(self.image, BLACK, (w//2, h//2), 3)
+        
+        # Glow effect
+        pygame.draw.circle(self.image, glow_color, (w//2, h//2), 10, 1)
+    
+    def update(self):
+        """Float the key up and down."""
+        self.float_offset += 0.1
+        self.rect.y = self.original_y + int(3 * math.sin(self.float_offset))
 
 
