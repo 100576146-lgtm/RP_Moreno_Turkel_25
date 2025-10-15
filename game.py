@@ -258,6 +258,21 @@ class Game:
             enemy = Enemy(x, y, etype, theme=self.theme)
             self.enemies.add(enemy)
             self.all_sprites.add(enemy)
+        
+        # Add extra floor enemies specifically for Level 2 (Moss-t Be Joking)
+        if self.theme.get("name") == "Moss-t Be Joking":
+            floor_enemy_rng = random.Random(1234 + self.current_level)
+            # Add 8-12 additional enemies on the floor for more challenge
+            floor_enemy_count = 8 + level_def["difficulty"] * 2
+            for _ in range(floor_enemy_count):
+                x = floor_enemy_rng.randint(400, level_def["width"] - 400)
+                y = level_def["height"] - 64  # Floor level
+                # Prefer ground-based enemy types for floor placement
+                floor_enemy_types = ["basic", "fast", "jumper", "big"]
+                etype = floor_enemy_rng.choice(floor_enemy_types)
+                floor_enemy = Enemy(x, y, etype, theme=self.theme)
+                self.enemies.add(floor_enemy)
+                self.all_sprites.add(floor_enemy)
 
         # Place powerups on or near platforms for accessibility
         powerup_positions = []
@@ -424,14 +439,14 @@ class Game:
                     self.obstacles.add(fire_obstacle)
                     self.all_sprites.add(fire_obstacle)
         
-        # Add falling cloud platforms for Level 5 (Boo Who?)
+        # Add moving cloud platforms for Level 5 (Boo Who?)
         if self.theme.get("name") == "Boo Who?":
             cloud_rng = random.Random(1111 + self.current_level)
-            cloud_count = 8 + level_def["difficulty"] * 2  # Falling cloud platforms
+            cloud_count = 8 + level_def["difficulty"] * 2  # Moving cloud platforms
             for _ in range(cloud_count):
                 x = cloud_rng.randint(300, level_def["width"] - 200)
                 y = cloud_rng.randint(150, level_def["height"] - 200)
-                cloud_platform = Platform(x, y, 120, 30, platform_type="falling_cloud", theme=self.theme)
+                cloud_platform = Platform(x, y, 120, 30, platform_type="moving", theme=self.theme)
                 self.platforms.add(cloud_platform)
                 self.all_sprites.add(cloud_platform)
         
@@ -810,10 +825,10 @@ class Game:
                 self.enemies.add(enemy)
                 self.all_sprites.add(enemy)
         
-        # Create the special bonus rainbow star that gives lives and points
-        bonus_rainbow_star = Powerup(400, 200, "rainbow_star")  # High up on middle platform
-        self.powerups.add(bonus_rainbow_star)
-        self.all_sprites.add(bonus_rainbow_star)
+        # Create blue star in bonus room worth 500 points and 1 extra heart
+        blue_star = Powerup(400, 200, "blue_star")  # High up on middle platform
+        self.powerups.add(blue_star)
+        self.all_sprites.add(blue_star)
         
         # Create player at bottom left
         self.player = Player(100, 500, self.sound_manager)  # Start on floor
@@ -883,8 +898,8 @@ class Game:
         self._create_maze_enemies()
         self._create_maze_checkpoints()
         
-        # Create regular player for bonus room
-        self.player = Player(400, 1100, self.sound_manager)  # Use regular Player class
+        # Create player at a safe position within the maze level
+        self.player = Player(400, 100, self.sound_manager)  # Use regular Player class
         self.all_sprites.add(self.player)
         
         # Reset camera
@@ -916,8 +931,8 @@ class Game:
         for _ in range(coin_count):
             x = coin_rng.randint(100, 900)
             y = coin_rng.randint(100, 700)
-            # Create underwater coin
-            underwater_coin = Powerup(x, y, "underwater_coin")
+            # Create underwater coin (using regular coin type)
+            underwater_coin = Powerup(x, y, "coin")
             self.powerups.add(underwater_coin)
             self.all_sprites.add(underwater_coin)
     
@@ -970,8 +985,8 @@ class Game:
                 # Rainbow platforms (move horizontally)
                 platform = Platform(x, y, 100, 25, platform_type="rainbow_platform", theme=self.theme)
             else:
-                # Falling cloud platforms (like Boo Who? level)
-                platform = Platform(x, y, 80, 20, platform_type="falling_cloud", theme=self.theme)
+                # Moving platforms (like Boo Who? level)
+                platform = Platform(x, y, 80, 20, platform_type="moving", theme=self.theme)
             
             self.platforms.add(platform)
             self.all_sprites.add(platform)
@@ -1222,18 +1237,20 @@ class Game:
                 self.score += 100
             elif result == "enemy_damaged":
                 self.score += 50
-            elif result == "rainbow_star":
-                # Rainbow star gives lives and points
+            elif result == "blue_star":
+                # Blue star gives 500 points and 1 extra heart, then transports back to main level
                 self.score += 500
                 self.lives += 1
                 if self.sound_manager:
                     self.sound_manager.play('coin')
-                # Return to main level after collecting rainbow star
+                # Transport back to original level after collecting blue star
                 self._return_from_bonus_room()
                 return
             elif result == "powerup":
-                # Regular coin
+                # Regular coin in bonus room
                 self.score += 100
+                if self.sound_manager:
+                    self.sound_manager.play('coin')
             
             # Check for big coin collection (at the top)
             big_coin_collisions = pygame.sprite.spritecollide(self.player, self.big_coins, True)

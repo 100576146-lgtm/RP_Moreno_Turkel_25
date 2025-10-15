@@ -1,7 +1,7 @@
 import random
 import math
 import pygame
-from constants import GRAVITY, JUMP_STRENGTH, PLAYER_SPEED, ENEMY_SPEED, LEVEL_WIDTH, LEVEL_HEIGHT, WHITE, BLACK, SOFT_PURPLE, LIGHT_PURPLE, SOFT_PINK, DUSTY_ROSE, PEACH, CORAL, MOUNTAIN_BLUE, BEIGE, LIGHT_BROWN, SAGE_GREEN, PASTEL_GREEN, MINT_GREEN, SOFT_YELLOW, SOFT_BLUE, CREAM, CHEESE_YELLOW, MELTED_CHEESE, BURNT_ORANGE, SOOT_GREY, MOSS_GREEN, DARK_BROWN, WET_ROCK_GREY, STEEL_GREY, DARK_GREY, SILVER, MOLTEN_ORANGE, ICE_BLUE, SNOW_WHITE, ECTOPLASM_GREEN, GHOSTLY_WHITE, SHADOW_GREY, GLITCH_GREEN, ERROR_RED, MOZZARELLA_WHITE, TOMATO_RED, BASIL_GREEN, CONCRETE_GREY, IVY_GREEN, DEEP_SEA_BLUE, DARK_BLUE, SEAWEED_GREEN, SKY_BLUE
+from constants import GRAVITY, JUMP_STRENGTH, PLAYER_SPEED, ENEMY_SPEED, LEVEL_WIDTH, LEVEL_HEIGHT, WHITE, BLACK, SOFT_PURPLE, LIGHT_PURPLE, SOFT_PINK, DUSTY_ROSE, PEACH, CORAL, MOUNTAIN_BLUE, BEIGE, LIGHT_BROWN, SAGE_GREEN, PASTEL_GREEN, MINT_GREEN, SOFT_YELLOW, SOFT_BLUE, CREAM, CHEESE_YELLOW, MELTED_CHEESE, BURNT_ORANGE, SOOT_GREY, MOSS_GREEN, DARK_BROWN, WET_ROCK_GREY, STEEL_GREY, DARK_GREY, SILVER, MOLTEN_ORANGE, ICE_BLUE, SNOW_WHITE, ECTOPLASM_GREEN, GHOSTLY_WHITE, SHADOW_GREY, GLITCH_GREEN, ERROR_RED, MOZZARELLA_WHITE, TOMATO_RED, BASIL_GREEN, CONCRETE_GREY, IVY_GREEN, DEEP_SEA_BLUE, DARK_BLUE, SEAWEED_GREEN, SKY_BLUE, PARMESAN_YELLOW, MARINARA_RED, STATIC_WHITE
 
 # Additional colors for new enemies
 RED = (255, 0, 0)
@@ -186,8 +186,8 @@ class Player(pygame.sprite.Sprite):
         self.on_ground = False
         collisions = pygame.sprite.spritecollide(self, platforms, False)
         for platform in collisions:
-            # Skip collision with space rocks and falling clouds (visual only)
-            if hasattr(platform, 'platform_type') and platform.platform_type in ["space_rock", "falling_cloud"]:
+            # Skip collision with space rocks (visual only)
+            if hasattr(platform, 'platform_type') and platform.platform_type in ["space_rock"]:
                 continue
             if self.vel_y > 0:
                 # Check if platform is solid (for fading platforms)
@@ -197,9 +197,8 @@ class Player(pygame.sprite.Sprite):
                 self.vel_y = 0
                 self.on_ground = True
                 self.jump_count = 0
-                # Trigger falling cloud platforms
-                if hasattr(platform, 'trigger_fall'):
-                    platform.trigger_fall()
+                # Platform landing logic (for future use)
+                pass
             elif self.vel_y < 0:
                 # Check if platform is solid (for fading platforms)
                 if hasattr(platform, 'is_solid') and not platform.is_solid:
@@ -272,6 +271,8 @@ class Player(pygame.sprite.Sprite):
             # Return the powerup type
             if powerup_type == "rainbow_star":
                 return "rainbow_star"
+            elif powerup_type == "blue_star":
+                return "blue_star"
             else:
                 return "powerup"
         # Cheese now works like rocks - no stuck timer needed
@@ -668,7 +669,6 @@ class Checkpoint(pygame.sprite.Sprite):
             pygame.draw.polygon(body, (0,0,0,0), [(cx, cy), (cx+radius, cy-10), (cx+radius, cy+10)])
             # Cheese holes
             for _ in range(8):
-                import random
                 r = random.randint(4, 8)
                 ox = random.randint(cx - radius + 10, cx + radius - 10)
                 oy = random.randint(cy - radius + 10, cy + radius - 10)
@@ -829,7 +829,10 @@ class Checkpoint(pygame.sprite.Sprite):
             
             # Screen content (code-like)
             for i in range(0, h-40, 8):
-                code_line = "".join(random.choice(["0", "1", "A", "B", "C", "D", "E", "F"]) for _ in range(8))
+                code_chars = []
+                for _ in range(8):
+                    code_chars.append(random.choice(["0", "1", "A", "B", "C", "D", "E", "F"]))
+                code_line = "".join(code_chars)
                 font_size = 8
                 for j, char in enumerate(code_line[:6]):  # Limit to fit screen
                     char_x = 15 + j * 8
@@ -916,8 +919,7 @@ class Platform(pygame.sprite.Sprite):
         self.original_y = y
         self.move_offset = 0
         self.theme = theme or {}
-        self.fallen = False  # For falling cloud platforms
-        self.fall_timer = 0  # Timer for falling animation
+        # Removed falling cloud variables - now using regular moving platforms
         self.draw_platform(width, height)
 
     def draw_platform(self, width, height):
@@ -928,8 +930,7 @@ class Platform(pygame.sprite.Sprite):
             self.draw_rock_block(width, height)
         elif self.platform_type == "ice_shard":
             self.draw_ice_shard(width, height)
-        elif self.platform_type == "falling_cloud":
-            self.draw_falling_cloud(width, height)
+        # Removed falling_cloud case - now using regular moving platforms
         elif self.platform_type == "space_rock":
             self.draw_space_rock(width, height)
         elif self.platform_type == "tetris_moving":
@@ -1338,14 +1339,7 @@ class Platform(pygame.sprite.Sprite):
             # Moving platform logic
             self.move_offset += 0.02
             self.rect.x = self.original_x + int(50 * pygame.math.Vector2(1, 0).rotate(self.move_offset * 180 / 3.14159).x)
-        elif self.platform_type == "falling_cloud" and self.fallen:
-            # Falling cloud behavior
-            self.fall_timer += 1
-            # Fall down quickly
-            self.rect.y += 8
-            # Remove cloud after falling for a while
-            if self.fall_timer > 60:  # 1 second at 60 FPS
-                self.kill()
+        # Removed falling cloud behavior - now using regular moving platforms
         elif self.platform_type == "tetris_moving":
             # Tetris platform movement - up/down and side to side
             self.move_offset += 0.03
@@ -1369,11 +1363,7 @@ class Platform(pygame.sprite.Sprite):
             self.move_offset += 0.03
             self.rect.y = self.original_y + int(50 * math.sin(self.move_offset))
     
-    def trigger_fall(self):
-        """Trigger the cloud to start falling."""
-        if self.platform_type == "falling_cloud" and not self.fallen:
-            self.fallen = True
-            self.fall_timer = 0
+    # Removed trigger_fall method - no longer using falling clouds
     
     def draw_mossy_platform(self, width, height):
         # Mossy boulder theme
@@ -1595,6 +1585,8 @@ class Powerup(pygame.sprite.Sprite):
             self.draw_bonus_coin()
         elif powerup_type == "rainbow_star":
             self.draw_rainbow_star()
+        elif powerup_type == "blue_star":
+            self.draw_blue_star()
         else:
             self.draw_coin()
 
@@ -1661,6 +1653,36 @@ class Powerup(pygame.sprite.Sprite):
         # Draw main star outline
         pygame.draw.polygon(self.image, (255, 255, 255), star_points)
         pygame.draw.polygon(self.image, (0, 0, 0), star_points, 1)
+
+    def draw_blue_star(self):
+        """Draw a blue star powerup."""
+        self.image.fill((0, 0, 0, 0))
+        
+        # Blue color scheme
+        blue_colors = [(100, 149, 237), (65, 105, 225), (30, 144, 255), (0, 191, 255)]
+        
+        center_x, center_y = 12, 12
+        
+        # Draw blue star
+        star_points = []
+        for i in range(10):  # 5-pointed star
+            angle = i * 36 * 3.14159 / 180
+            if i % 2 == 0:
+                radius = 10  # Outer points
+            else:
+                radius = 5   # Inner points
+            x = center_x + int(radius * math.cos(angle))
+            y = center_y + int(radius * math.sin(angle))
+            star_points.append((x, y))
+        
+        # Draw star with blue colors
+        for i, point in enumerate(star_points):
+            color = blue_colors[i % len(blue_colors)]
+            pygame.draw.circle(self.image, color, point, 2)
+        
+        # Draw main star outline in bright blue
+        pygame.draw.polygon(self.image, (135, 206, 235), star_points)  # Sky blue
+        pygame.draw.polygon(self.image, (0, 0, 139), star_points, 1)  # Dark blue outline
         
         # Sparkle effects
         sparkle_positions = [(6, 6), (18, 6), (6, 18), (18, 18), (12, 3), (12, 21)]
