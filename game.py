@@ -230,7 +230,7 @@ class Game:
             enemy_count += 8  # Computer virus worms for challenge
         # Make pasta level very hard with lots of ground enemies
         elif self.theme.get("name") == "Pasta La Vista":
-            enemy_count += 12  # Lots of ground enemies for challenge
+            enemy_count += 40  # Many more ground enemies for intense challenge
         # Make city level challenging with urban enemies
         elif self.theme.get("name") == "Concrete Jungle":
             enemy_count += 10  # City enemies for challenge
