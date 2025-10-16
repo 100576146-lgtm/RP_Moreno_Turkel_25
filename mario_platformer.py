@@ -36,7 +36,7 @@ MOUNTAIN_BLUE = (119, 136, 153)
 
 # Physics
 GRAVITY = 0.8
-JUMP_STRENGTH = -15
+JUMP_STRENGTH = -15.75  # Increased by 5% (was -15)
 PLAYER_SPEED = 5
 ENEMY_SPEED = 2
 
@@ -178,6 +178,10 @@ class Player(pygame.sprite.Sprite):
         self.jump_count = 0
         self.max_jumps = 1
         
+        # Variable jump height tracking
+        self.jump_hold_time = 0
+        self.max_jump_hold = 15  # Maximum frames to hold jump for bonus (15 frames = 0.25 seconds at 60 FPS)
+        
         # Animation
         self.facing_right = True
         self.animation_frame = 0
@@ -273,12 +277,25 @@ class Player(pygame.sprite.Sprite):
         if old_facing != self.facing_right or was_moving != self.is_moving:
             self.draw_character()
             
-        # Jumping (only when on ground)
-        if (keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]) and self.on_ground:
-            self.vel_y = JUMP_STRENGTH
+        # Variable jump height implementation
+        jump_pressed = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]
+        
+        if jump_pressed and self.on_ground:
+            # Track how long jump button is held
+            self.jump_hold_time += 1
+            if self.jump_hold_time <= self.max_jump_hold:
+                # Apply 10% bonus for holding jump button longer
+                jump_bonus = 1.0 + (self.jump_hold_time / self.max_jump_hold) * 0.1  # Up to 10% bonus
+                self.vel_y = JUMP_STRENGTH * jump_bonus
+            else:
+                # Maximum bonus reached
+                self.vel_y = JUMP_STRENGTH * 1.1
             self.on_ground = False
             if self.sound_manager:
                 self.sound_manager.play('jump')
+        elif not jump_pressed:
+            # Reset jump hold time when button is released
+            self.jump_hold_time = 0
         
         # Apply gravity
         self.vel_y += GRAVITY

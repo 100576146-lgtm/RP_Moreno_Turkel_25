@@ -10,18 +10,24 @@ from sprite_animator import SpriteAnimator
 
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, x, y, sound_manager=None, speed_multiplier=1.0):
+    def __init__(self, x, y, sound_manager=None, speed_multiplier=1.0, jump_multiplier=1.0):
         super().__init__()
         
         # Initialize sprite animator
         self.sprite_animator = SpriteAnimator()
         self.speed_multiplier = speed_multiplier
+        self.jump_multiplier = jump_multiplier
         
         # Get initial sprite and set up rect
         self.image = self.sprite_animator.get_current_sprite()
-        self.rect = self.image.get_rect()
-        self.rect.x = x
-        self.rect.y = y
+        # Create a smaller hitbox (70% of sprite size for more forgiving collisions)
+        sprite_rect = self.image.get_rect()
+        hitbox_width = int(sprite_rect.width * 0.7)
+        hitbox_height = int(sprite_rect.height * 0.7)
+        self.rect = pygame.Rect(x, y, hitbox_width, hitbox_height)
+        # Store offset to center the sprite on the hitbox
+        self.sprite_offset_x = (sprite_rect.width - hitbox_width) // 2
+        self.sprite_offset_y = (sprite_rect.height - hitbox_height) // 2
         
         # Physics
         self.vel_x = 0
@@ -31,6 +37,10 @@ class Player(pygame.sprite.Sprite):
         self.max_jumps = 1
         self.facing_right = True
         self.sound_manager = sound_manager
+        
+        # Variable jump height tracking
+        self.jump_hold_time = 1
+        self.max_jump_hold = 15  # Maximum frames to hold jump for bonus (15 frames = 0.25 seconds at 60 FPS)
         
         # Animation state
         self.animation_state = "idle"
@@ -60,6 +70,7 @@ class Player(pygame.sprite.Sprite):
         self.death_timer = 0
         self.animation_state = "idle"
         self.sprite_animator.set_animation("idle", self.facing_right)
+        self.jump_hold_time = 0  # Reset jump hold time
         # Keep star powerup active through respawn
     
     def activate_star_powerup(self):
@@ -109,16 +120,11 @@ class Player(pygame.sprite.Sprite):
                 pygame.draw.circle(glow_surface, WHITE, (sparkle_x, sparkle_y), sparkle_size)
             
             self.image = glow_surface
-            # Adjust rect to account for glow
-            old_center = self.rect.center
-            self.rect = self.image.get_rect()
-            self.rect.center = old_center
+            # Keep the smaller hitbox rect (don't resize to match image)
         else:
             # Normal sprite without glow
             self.image = base_sprite
-            old_center = self.rect.center
-            self.rect = self.image.get_rect()
-            self.rect.center = old_center
+            # Keep the smaller hitbox rect (don't resize to match image)
     
 
     def update(self, platforms, enemies, powerups, obstacles, camera_x, level_width=None):
@@ -146,7 +152,8 @@ class Player(pygame.sprite.Sprite):
         # Calculate speed and jump based on star powerup and speed multiplier
         base_speed = PLAYER_SPEED * self.speed_multiplier
         current_speed = base_speed * 1.5 if self.star_active else base_speed
-        current_jump = JUMP_STRENGTH * 1.3 if self.star_active else JUMP_STRENGTH
+        base_jump = JUMP_STRENGTH * self.jump_multiplier
+        current_jump = base_jump * 1.3 if self.star_active else base_jump
         
         # Determine animation state based on movement and physics
         if self.vel_y < -2:  # Jumping up
@@ -168,13 +175,27 @@ class Player(pygame.sprite.Sprite):
         # Update sprite animator with current state
         self.sprite_animator.set_animation(self.animation_state, self.facing_right)
         
-        if (keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]) and self.on_ground:
-            self.vel_y = current_jump
+        # Variable jump height implementation
+        jump_pressed = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]
+        
+        if jump_pressed and self.on_ground:
+            # Track how long jump button is held
+            self.jump_hold_time += 1
+            if self.jump_hold_time <= self.max_jump_hold:
+                # Apply 10% bonus for holding jump button longer
+                jump_bonus = 1.0 + (self.jump_hold_time / self.max_jump_hold) * 0.1  # Up to 10% bonus
+                self.vel_y = current_jump * jump_bonus
+            else:
+                # Maximum bonus reached
+                self.vel_y = current_jump * 1.1
             self.on_ground = False
             self.animation_state = "jumping"
             self.sprite_animator.set_animation("jumping", self.facing_right)
             if self.sound_manager:
                 self.sound_manager.play('jump')
+        elif not jump_pressed:
+            # Reset jump hold time when button is released
+            self.jump_hold_time = 0
         
         self.vel_y += GRAVITY
         self.rect.x += self.vel_x

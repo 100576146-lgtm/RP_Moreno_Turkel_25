@@ -142,7 +142,7 @@ INK_BLACK = (25, 25, 25)
 
 # Physics
 GRAVITY = 0.8
-JUMP_STRENGTH = -15
+JUMP_STRENGTH = -15  # Increased by 5% (was -15)
 PLAYER_SPEED = 5
 
 # Calculate maximum jump height
