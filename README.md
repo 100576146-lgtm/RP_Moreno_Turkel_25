@@ -25,6 +25,7 @@ A pygame-based platformer game inspired by the original Mario games.
 - **Lives System**: Start with 3 lives, lose one when hit by enemies, obstacles, or falling off the level
 - **Score System**: Earn points by defeating enemies and collecting powerups
 - **Performance Optimized**: Sprite culling and background caching for smooth gameplay
+- **Resizable Window**: Window can be resized by dragging edges, with fullscreen support (F11)
 
 ## Controls
 
@@ -35,6 +36,9 @@ A pygame-based platformer game inspired by the original Mario games.
   - ESC to pause game or return to menu
   - R or SPACE to restart from game over screen
   - M to return to main menu from game over screen
+- **Display Options**:
+  - F11 to toggle fullscreen mode
+  - Resize the window by dragging its edges (windowed mode only)
 
 ## How to Run
 
@@ -57,7 +61,7 @@ On Windows, you can also use:
 py -3 mario_platformer.py
 ```
 
-Alternatively, you can run the file directly by launching `mario_platformer.py`.
+Alternatively, you can run the file directly by launching `mario_platformer.py` on your IDE.
 
 ## Project Structure
 

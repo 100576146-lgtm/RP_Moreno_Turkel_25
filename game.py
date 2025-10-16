@@ -35,10 +35,12 @@ class Game:
             self.screen = pygame.display.set_mode((FULLSCREEN_WIDTH, FULLSCREEN_HEIGHT), pygame.FULLSCREEN)
             self.screen_width = FULLSCREEN_WIDTH
             self.screen_height = FULLSCREEN_HEIGHT
+            self.fullscreen = True
         else:
-            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
             self.screen_width = SCREEN_WIDTH
             self.screen_height = SCREEN_HEIGHT
+            self.fullscreen = False
         pygame.display.set_caption("Rat Race")
         self.clock = pygame.time.Clock()
 
@@ -726,6 +728,9 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
+            elif event.type == pygame.VIDEORESIZE:
+                if not self.fullscreen:
+                    self.resize_screen(event.w, event.h)
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F11:
                     self.toggle_fullscreen()
@@ -769,19 +774,48 @@ class Game:
         """Toggle between windowed and fullscreen mode."""
         if self.screen.get_flags() & pygame.FULLSCREEN:
             # Switch to windowed
-            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
             self.screen_width = SCREEN_WIDTH
             self.screen_height = SCREEN_HEIGHT
+            self.fullscreen = False
         else:
             # Switch to fullscreen
             self.screen = pygame.display.set_mode((FULLSCREEN_WIDTH, FULLSCREEN_HEIGHT), pygame.FULLSCREEN)
             self.screen_width = FULLSCREEN_WIDTH
             self.screen_height = FULLSCREEN_HEIGHT
+            self.fullscreen = True
         
         # Update components with new screen dimensions
-        self.camera = Camera(self.screen_width, self.screen_height)
-        self.bg = Background(self.screen_width, self.screen_height)
-        self.ui = UI(self.screen_width, self.screen_height)
+        self._update_components_for_resize()
+    
+    def resize_screen(self, width, height):
+        """Handle window resize event."""
+        # Set minimum dimensions to prevent too small windows
+        min_width, min_height = 640, 480
+        width = max(width, min_width)
+        height = max(height, min_height)
+        
+        # Update screen
+        self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+        self.screen_width = width
+        self.screen_height = height
+        
+        # Update components with new screen dimensions
+        self._update_components_for_resize()
+    
+    def _update_components_for_resize(self):
+        """Update all components that depend on screen dimensions."""
+        # Update camera
+        self.camera.set_screen_dimensions(self.screen_width, self.screen_height)
+        
+        # Update background (clear cache to force regeneration)
+        self.bg.set_screen_dimensions(self.screen_width, self.screen_height)
+        
+        # Update UI
+        self.ui.set_screen_dimensions(self.screen_width, self.screen_height)
+        
+        # Reload mouse images with new screen dimensions
+        self._load_mouse_images()
 
     def create_bonus_room(self, difficulty=0):
         """Create a simple bonus room with floor, platforms, and a special coin."""
@@ -1784,31 +1818,31 @@ class Game:
             self.bg.draw(self.screen, self.current_level, is_bonus_room=False)
         
         # Semi-transparent overlay for text readability
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
         overlay.set_alpha(80)
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
         
         # Title
-        self.ui.draw_cheese_title(self.screen, "Rat Race", SCREEN_WIDTH//2, SCREEN_HEIGHT//4, center=True, size=96)
-        self.ui.draw_bubble_text(self.screen, "Cheese-fueled platformer", SCREEN_WIDTH//2, SCREEN_HEIGHT//4 + 60, center=True, size=36, max_width=SCREEN_WIDTH - 80)
+        self.ui.draw_cheese_title(self.screen, "Rat Race", self.screen_width//2, self.screen_height//4, center=True, size=96)
+        self.ui.draw_bubble_text(self.screen, "Cheese-fueled platformer", self.screen_width//2, self.screen_height//4 + 60, center=True, size=36, max_width=self.screen_width - 80)
         # Buttons
-        start_y = SCREEN_HEIGHT//2 + 20
-        self.ui.draw_cheese_button(self.screen, "Start (SPACE/ENTER)", SCREEN_WIDTH//2, start_y)
-        self.ui.draw_cheese_button(self.screen, "Level Select (L)", SCREEN_WIDTH//2, start_y + 60)
-        self.ui.draw_cheese_button(self.screen, "ESC to Quit", SCREEN_WIDTH//2, start_y + 120)
+        start_y = self.screen_height//2 + 20
+        self.ui.draw_cheese_button(self.screen, "Start (SPACE/ENTER)", self.screen_width//2, start_y)
+        self.ui.draw_cheese_button(self.screen, "Level Select (L)", self.screen_width//2, start_y + 60)
+        self.ui.draw_cheese_button(self.screen, "ESC to Quit", self.screen_width//2, start_y + 120)
         
         # Keyboard instructions
         instructions_y = start_y + 200
-        self.ui.draw_bubble_text(self.screen, "Controls:", SCREEN_WIDTH//2, instructions_y, center=True, size=28)
-        self.ui.draw_bubble_text(self.screen, "Arrow Keys: Move • SPACE: Jump", SCREEN_WIDTH//2, instructions_y + 35, center=True, size=24)
-        self.ui.draw_bubble_text(self.screen, "Down Arrow: Crouch • ESC: Pause", SCREEN_WIDTH//2, instructions_y + 65, center=True, size=24)
+        self.ui.draw_bubble_text(self.screen, "Controls:", self.screen_width//2, instructions_y, center=True, size=28)
+        self.ui.draw_bubble_text(self.screen, "Arrow Keys: Move • SPACE: Jump", self.screen_width//2, instructions_y + 35, center=True, size=24)
+        self.ui.draw_bubble_text(self.screen, "Down Arrow: Crouch • ESC: Pause", self.screen_width//2, instructions_y + 65, center=True, size=24)
         
         # High score display
         if hasattr(self, 'high_score') and self.high_score > 0:
-            self.ui.draw_bubble_text(self.screen, f"High Score: {self.high_score:,}", SCREEN_WIDTH//2, SCREEN_HEIGHT - 60, center=True, size=28)
+            self.ui.draw_bubble_text(self.screen, f"High Score: {self.high_score:,}", self.screen_width//2, self.screen_height - 60, center=True, size=28)
         
-        self.ui.draw_bubble_text(self.screen, "Sound effects enabled", SCREEN_WIDTH//2, SCREEN_HEIGHT - 30, center=True, size=24)
+        self.ui.draw_bubble_text(self.screen, "Sound effects enabled", self.screen_width//2, self.screen_height - 30, center=True, size=24)
         # Restore level theme for gameplay drawing (only if we changed it)
         if old_theme is not None:
             self.bg.set_theme(old_theme)
@@ -1820,8 +1854,8 @@ class Game:
         self.bg.set_theme(cheese_theme)
         self.bg.draw(self.screen, self.current_level, is_bonus_room=False)
         # Loading text
-        self.ui.draw_cheese_title(self.screen, "Loading...", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 20, center=True, size=72)
-        self.ui.draw_bubble_text(self.screen, "Tip: Holes make the best shortcuts.", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 40, center=True, size=28)
+        self.ui.draw_cheese_title(self.screen, "Loading...", self.screen_width//2, self.screen_height//2 - 20, center=True, size=72)
+        self.ui.draw_bubble_text(self.screen, "Tip: Holes make the best shortcuts.", self.screen_width//2, self.screen_height//2 + 40, center=True, size=28)
         self.bg.set_theme(old_theme)
 
     def _draw_game(self):
@@ -1829,7 +1863,7 @@ class Game:
         for sprite in self.all_sprites:
             screen_x = sprite.rect.x - self.camera.x
             screen_y = sprite.rect.y - self.camera.y
-            if (-sprite.rect.width < screen_x < SCREEN_WIDTH and -sprite.rect.height < screen_y < SCREEN_HEIGHT):
+            if (-sprite.rect.width < screen_x < self.screen_width and -sprite.rect.height < screen_y < self.screen_height):
                 # Apply sprite offset for player to center visual on smaller hitbox
                 if hasattr(sprite, 'sprite_offset_x'):
                     draw_x = screen_x - sprite.sprite_offset_x
@@ -1845,23 +1879,23 @@ class Game:
                 countdown_seconds = max(1, ((self.countdown_timer - 1) // 60) + 1)
                 
                 # Computer terminal-style countdown display in center of screen
-                countdown_rect = pygame.Rect(SCREEN_WIDTH//2 - 100, SCREEN_HEIGHT//2 - 100, 200, 200)
+                countdown_rect = pygame.Rect(self.screen_width//2 - 100, self.screen_height//2 - 100, 200, 200)
                 pygame.draw.rect(self.screen, (0, 0, 0), countdown_rect)  # Black terminal background
                 pygame.draw.rect(self.screen, (0, 255, 0), countdown_rect, 5)  # Green terminal border
                 
                 # Draw countdown number in computer style
-                self.ui.draw_cheese_title(self.screen, str(countdown_seconds), SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 20, center=True, size=120)
+                self.ui.draw_cheese_title(self.screen, str(countdown_seconds), self.screen_width//2, self.screen_height//2 - 20, center=True, size=120)
                 
                 # Add computer-style status text
-                self.ui.draw_bubble_text(self.screen, "SYSTEM READY", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 40, center=True, size=16)
-                self.ui.draw_bubble_text(self.screen, ">>> INITIALIZING <<<", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 60, center=True, size=14)
+                self.ui.draw_bubble_text(self.screen, "SYSTEM READY", self.screen_width//2, self.screen_height//2 + 40, center=True, size=16)
+                self.ui.draw_bubble_text(self.screen, ">>> INITIALIZING <<<", self.screen_width//2, self.screen_height//2 + 60, center=True, size=14)
                 
                 # Draw computer-themed warning sign
                 if hasattr(self, 'run_sign_x') and hasattr(self, 'run_sign_y'):
                     run_sign_screen_x = self.run_sign_x - self.camera.x
                     run_sign_screen_y = self.run_sign_y - self.camera.y
                     
-                    if -100 < run_sign_screen_x < SCREEN_WIDTH + 100:
+                    if -100 < run_sign_screen_x < self.screen_width + 100:
                         # Draw computer terminal-style sign background
                         sign_rect = pygame.Rect(run_sign_screen_x - 70, run_sign_screen_y - 45, 140, 90)
                         pygame.draw.rect(self.screen, (0, 0, 0), sign_rect)  # Black terminal background
@@ -1876,14 +1910,14 @@ class Game:
             else:
                 # Countdown over - draw computer-themed spike wall
                 spike_wall_screen_x = self.spike_wall_x - self.camera.x
-                if -100 < spike_wall_screen_x < SCREEN_WIDTH + 100:
+                if -100 < spike_wall_screen_x < self.screen_width + 100:
                     # Draw computer terminal-style spike wall
-                    spike_wall_rect = pygame.Rect(spike_wall_screen_x, 0, 50, SCREEN_HEIGHT)
+                    spike_wall_rect = pygame.Rect(spike_wall_screen_x, 0, 50, self.screen_height)
                     pygame.draw.rect(self.screen, (0, 0, 0), spike_wall_rect)  # Black terminal background
                     pygame.draw.rect(self.screen, (255, 0, 0), spike_wall_rect, 3)  # Red danger border
                     
                     # Draw computer-style error spikes
-                    for y in range(0, SCREEN_HEIGHT, 25):
+                    for y in range(0, self.screen_height, 25):
                         spike_points = [
                             (spike_wall_screen_x + 50, y),
                             (spike_wall_screen_x + 35, y + 12),
@@ -1906,13 +1940,13 @@ class Game:
         # Draw star powerup timer if active
         if self.player.star_active:
             # Draw star powerup indicator
-            star_panel_rect = pygame.Rect(SCREEN_WIDTH - 210, 10, 200, 60)
+            star_panel_rect = pygame.Rect(self.screen_width - 210, 10, 200, 60)
             pygame.draw.rect(self.screen, SOFT_YELLOW, star_panel_rect)
             pygame.draw.rect(self.screen, BLACK, star_panel_rect, 3)
             
             # Draw star icon
             import math
-            star_center_x = SCREEN_WIDTH - 180
+            star_center_x = self.screen_width - 180
             star_center_y = 30
             star_points = []
             for i in range(10):
@@ -1930,7 +1964,7 @@ class Game:
             # Draw timer bar
             timer_width = 140
             timer_height = 15
-            timer_x = SCREEN_WIDTH - 200
+            timer_x = self.screen_width - 200
             timer_y = 48
             
             # Background bar
@@ -1953,35 +1987,35 @@ class Game:
             
             # Draw time remaining text
             seconds_remaining = int(self.player.star_timer / 60) + 1
-            self.ui.draw_bubble_text(self.screen, f"{seconds_remaining}s", SCREEN_WIDTH - 130, 30, center=False, size=24)
+            self.ui.draw_bubble_text(self.screen, f"{seconds_remaining}s", self.screen_width - 130, 30, center=False, size=24)
 
     def _draw_level_complete(self):
         self.bg.draw(self.screen, self.current_level, is_bonus_room=False)
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
         overlay.set_alpha(160)
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
         
         # Level complete title
-        self.ui.draw_cheese_title(self.screen, "Level Complete!!", SCREEN_WIDTH//2, SCREEN_HEIGHT//4, center=True, size=72)
+        self.ui.draw_cheese_title(self.screen, "Level Complete!!", self.screen_width//2, self.screen_height//4, center=True, size=72)
         
         # Show current level info
         level_name = self.theme.get("name", f"Level {self.current_level + 1}")
-        self.ui.draw_bubble_text(self.screen, level_name, SCREEN_WIDTH//2, SCREEN_HEIGHT//4 + 60, center=True, size=36)
+        self.ui.draw_bubble_text(self.screen, level_name, self.screen_width//2, self.screen_height//4 + 60, center=True, size=36)
         
         # Show current score
-        self.ui.draw_bubble_text(self.screen, f"Final Score: {self.score:,}", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 40, center=True, size=48)
+        self.ui.draw_bubble_text(self.screen, f"Final Score: {self.score:,}", self.screen_width//2, self.screen_height//2 - 40, center=True, size=48)
         
         # Continue options
         if self.current_level < len(self.levels) - 1:
-            self.ui.draw_bubble_text(self.screen, "Continue?", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 20, center=True, size=36)
-            self.ui.draw_cheese_button(self.screen, "Next Level (SPACE/ENTER)", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 80)
-            self.ui.draw_cheese_button(self.screen, "Main Menu (M)", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 140)
+            self.ui.draw_bubble_text(self.screen, "Continue?", self.screen_width//2, self.screen_height//2 + 20, center=True, size=36)
+            self.ui.draw_cheese_button(self.screen, "Next Level (SPACE/ENTER)", self.screen_width//2, self.screen_height//2 + 80)
+            self.ui.draw_cheese_button(self.screen, "Main Menu (M)", self.screen_width//2, self.screen_height//2 + 140)
         else:
             # All levels complete!
-            self.ui.draw_bubble_text(self.screen, "All Levels Complete!", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 20, center=True, size=48)
-            self.ui.draw_bubble_text(self.screen, "Congratulations!", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 80, center=True, size=36)
-            self.ui.draw_cheese_button(self.screen, "Main Menu (M)", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 140)
+            self.ui.draw_bubble_text(self.screen, "All Levels Complete!", self.screen_width//2, self.screen_height//2 + 20, center=True, size=48)
+            self.ui.draw_bubble_text(self.screen, "Congratulations!", self.screen_width//2, self.screen_height//2 + 80, center=True, size=36)
+            self.ui.draw_cheese_button(self.screen, "Main Menu (M)", self.screen_width//2, self.screen_height//2 + 140)
             # Update high score
             self.update_high_score()
 
@@ -1998,21 +2032,21 @@ class Game:
             self.bg.draw(self.screen, self.current_level, is_bonus_room=False)
         
         # Semi-transparent overlay for text readability
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
         overlay.set_alpha(120)
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
         
-        self.ui.draw_cheese_title(self.screen, "Game Over", SCREEN_WIDTH//2, SCREEN_HEIGHT//3, center=True, size=96)
+        self.ui.draw_cheese_title(self.screen, "Game Over", self.screen_width//2, self.screen_height//3, center=True, size=96)
         
         # Stats
-        self.ui.draw_bubble_text(self.screen, f"Final Score: {self.score}", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 20, center=True, size=48)
-        self.ui.draw_bubble_text(self.screen, f"Level Reached: {self.level_progress + 1}", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 60, center=True, size=32)
+        self.ui.draw_bubble_text(self.screen, f"Final Score: {self.score}", self.screen_width//2, self.screen_height//2 + 20, center=True, size=48)
+        self.ui.draw_bubble_text(self.screen, f"Level Reached: {self.level_progress + 1}", self.screen_width//2, self.screen_height//2 + 60, center=True, size=32)
         # Cheese buttons
-        base_y = SCREEN_HEIGHT//2 + 110
-        self.ui.draw_cheese_button(self.screen, "Restart (R/SPACE)", SCREEN_WIDTH//2, base_y)
-        self.ui.draw_cheese_button(self.screen, "Main Menu (M)", SCREEN_WIDTH//2, base_y + 60)
-        self.ui.draw_cheese_button(self.screen, "ESC to Quit", SCREEN_WIDTH//2, base_y + 120)
+        base_y = self.screen_height//2 + 110
+        self.ui.draw_cheese_button(self.screen, "Restart (R/SPACE)", self.screen_width//2, base_y)
+        self.ui.draw_cheese_button(self.screen, "Main Menu (M)", self.screen_width//2, base_y + 60)
+        self.ui.draw_cheese_button(self.screen, "ESC to Quit", self.screen_width//2, base_y + 120)
         # Restore theme (only if we changed it)
         if old_theme is not None:
             self.bg.set_theme(old_theme)
@@ -2028,7 +2062,7 @@ class Game:
         for sprite in self.all_sprites:
             screen_x = sprite.rect.x - self.camera.x
             screen_y = sprite.rect.y - self.camera.y
-            if (-sprite.rect.width < screen_x < SCREEN_WIDTH and -sprite.rect.height < screen_y < SCREEN_HEIGHT):
+            if (-sprite.rect.width < screen_x < self.screen_width and -sprite.rect.height < screen_y < self.screen_height):
                 # Apply sprite offset for player to center visual on smaller hitbox
                 if hasattr(sprite, 'sprite_offset_x'):
                     draw_x = screen_x - sprite.sprite_offset_x
@@ -2046,7 +2080,7 @@ class Game:
         self.ui.draw_bubble_text(self.screen, f"Score: {self.score}", panel_rect.left + 10, panel_rect.centery, center=False, size=28, max_width=panel_rect.width - 20)
         
         # Bonus room title
-        self.ui.draw_cheese_title(self.screen, "BONUS ROOM!", SCREEN_WIDTH//2, 80, center=True, size=72)
+        self.ui.draw_cheese_title(self.screen, "BONUS ROOM!", self.screen_width//2, 80, center=True, size=72)
         
         self.bg.set_theme(old_theme)
     
@@ -2063,24 +2097,24 @@ class Game:
             self.bg.draw(self.screen, self.current_level, is_bonus_room=False)
         
         # Semi-transparent overlay for text readability
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
         overlay.set_alpha(100)
         overlay.fill(BLACK)
         self.screen.blit(overlay, (0, 0))
         
-        self.ui.draw_cheese_title(self.screen, "Select Level", SCREEN_WIDTH//2, 90, center=True, size=84)
+        self.ui.draw_cheese_title(self.screen, "Select Level", self.screen_width//2, 90, center=True, size=84)
         
         top = 180
         for i, level in enumerate(self.levels):
             name = f"{i+1}. {level['theme'].get('name', 'Level')}"
             y = top + i * 36
             if i == self.current_level:
-                bar = pygame.Rect(SCREEN_WIDTH//2 - 180, y - 16, 360, 32)
+                bar = pygame.Rect(self.screen_width//2 - 180, y - 16, 360, 32)
                 pygame.draw.rect(self.screen, MINT_GREEN, bar)
                 pygame.draw.rect(self.screen, BLACK, bar, 2)
-            self.ui.draw_bubble_text(self.screen, name, SCREEN_WIDTH//2, y, center=True, size=28)
+            self.ui.draw_bubble_text(self.screen, name, self.screen_width//2, y, center=True, size=28)
         # Instruction cheese button
-        self.ui.draw_cheese_button(self.screen, "UP/DOWN to choose, ENTER to play, M for menu", SCREEN_WIDTH//2, SCREEN_HEIGHT - 50, width=560, height=44)
+        self.ui.draw_cheese_button(self.screen, "UP/DOWN to choose, ENTER to play, M for menu", self.screen_width//2, self.screen_height - 50, width=560, height=44)
         # Restore theme (only if we changed it)
         if old_theme is not None:
             self.bg.set_theme(old_theme)

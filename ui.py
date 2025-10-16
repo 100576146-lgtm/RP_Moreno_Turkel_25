@@ -8,6 +8,11 @@ class UI:
         self.screen_height = screen_height
         self.font = pygame.font.Font(None, 36)
         self.font_small = pygame.font.Font(None, 28)
+    
+    def set_screen_dimensions(self, width, height):
+        """Update screen dimensions."""
+        self.screen_width = width
+        self.screen_height = height
 
     def draw_heart(self, screen, cx, cy, r, color_fill, color_outline):
         pygame.draw.circle(screen, color_fill, (cx - r//2, cy - r//4), r//2)

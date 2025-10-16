@@ -12,7 +12,7 @@ Used by `game.py` to build each level.
 import random
 import math
 import pygame
-from constants import GRAVITY, JUMP_STRENGTH, PLAYER_SPEED, ENEMY_SPEED, LEVEL_WIDTH, LEVEL_HEIGHT, WHITE, BLACK, SOFT_PURPLE, LIGHT_PURPLE, SOFT_PINK, DUSTY_ROSE, PEACH, CORAL, MOUNTAIN_BLUE, BEIGE, LIGHT_BROWN, SAGE_GREEN, PASTEL_GREEN, MINT_GREEN, SOFT_YELLOW, SOFT_BLUE, CREAM, CHEESE_YELLOW, MELTED_CHEESE, BURNT_ORANGE, SOOT_GREY, MOSS_GREEN, DARK_BROWN, WET_ROCK_GREY, STEEL_GREY, DARK_GREY, SILVER, MOLTEN_ORANGE, ICE_BLUE, SNOW_WHITE, ECTOPLASM_GREEN, GHOSTLY_WHITE, SHADOW_GREY, GLITCH_GREEN, ERROR_RED, MOZZARELLA_WHITE, TOMATO_RED, BASIL_GREEN, CONCRETE_GREY, IVY_GREEN, DEEP_SEA_BLUE, DARK_BLUE, SEAWEED_GREEN, SKY_BLUE, PARMESAN_YELLOW, MARINARA_RED, STATIC_WHITE
+from constants import GRAVITY, JUMP_STRENGTH, PLAYER_SPEED, ENEMY_SPEED, LEVEL_WIDTH, LEVEL_HEIGHT, WHITE, BLACK, SOFT_PURPLE, LIGHT_PURPLE, SOFT_PINK, DUSTY_ROSE, PEACH, CORAL, MOUNTAIN_BLUE, BEIGE, LIGHT_BROWN, SAGE_GREEN, PASTEL_GREEN, MINT_GREEN, SOFT_YELLOW, SOFT_BLUE, CREAM, CHEESE_YELLOW, MELTED_CHEESE, BURNT_ORANGE, SOOT_GREY, MOSS_GREEN, DARK_BROWN, WET_ROCK_GREY, STEEL_GREY, DARK_GREY, SILVER, MOLTEN_ORANGE, ICE_BLUE, SNOW_WHITE, ECTOPLASM_GREEN, GHOSTLY_WHITE, SHADOW_GREY, GLITCH_GREEN, ERROR_RED, MOZZARELLA_WHITE, TOMATO_RED, BASIL_GREEN, CONCRETE_GREY, IVY_GREEN, DEEP_SEA_BLUE, DARK_BLUE, SEAWEED_GREEN, SKY_BLUE, PARMESAN_YELLOW, MARINARA_RED, STATIC_WHITE, NEON_MAGENTA, NEON_CYAN, NEON_YELLOW, NEON_GREEN, NEON_RED, NEON_WHITE, NEON_PURPLE
 
 # Additional colors for new enemies
 RED = (255, 0, 0)
@@ -21,6 +21,11 @@ from sprite_animator import SpriteAnimator
 
 
 class Player(pygame.sprite.Sprite):
+    """Controllable character handling input, physics, and collisions.
+
+    The visible sprite can be larger than the collision hitbox for more
+    forgiving gameplay. Animation frames are provided by `SpriteAnimator`.
+    """
     def __init__(self, x, y, sound_manager=None, speed_multiplier=1.0, jump_multiplier=1.0):
         super().__init__()
         
@@ -92,6 +97,11 @@ class Player(pygame.sprite.Sprite):
             self.sound_manager.play('coin')  # Use coin sound for powerup
 
     def draw_character(self):
+        """Rebuild the current frame for the player sprite image.
+
+        Does not modify the collision rect size, only updates the
+        visible `self.image` (with glow when a star is active).
+        """
         """Update the character sprite using the sprite animator."""
         # Update the sprite animator
         self.sprite_animator.update()
@@ -139,6 +149,10 @@ class Player(pygame.sprite.Sprite):
     
 
     def update(self, platforms, enemies, powerups, obstacles, camera_x, level_width=None):
+        """Advance the player by one frame and handle interactions.
+
+        Returns an event string when something noteworthy happens.
+        """
         # Update star powerup timer
         if self.star_active:
             self.star_timer -= 1
@@ -350,6 +364,7 @@ class Player(pygame.sprite.Sprite):
 
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, x, y, enemy_type="basic", theme=None):
+        """Initialize an enemy of a given type at (x, y)."""
         super().__init__()
         self.enemy_type = enemy_type
         self.theme = theme or {}
@@ -590,6 +605,7 @@ class Enemy(pygame.sprite.Sprite):
         pygame.draw.ellipse(self.image, BLACK, (3*w//4 - w//6, foot_y, w//6, 8))
 
     def update(self, platforms):
+        """Update enemy movement, gravity, and platform collisions."""
         # Handle air enemies differently
         if self.is_air_enemy:
             self.update_air_enemy()
@@ -1018,6 +1034,8 @@ class Platform(pygame.sprite.Sprite):
                 self.draw_concrete_platform(width, height)
             elif theme_name == "Kraken Me Up":
                 self.draw_underwater_platform(width, height)
+            elif theme_name == "Neon Night":
+                self.draw_neon_platform(width, height)
             else:
                 # Default platform styling
                 self.draw_default_platform(width, height)
@@ -1150,7 +1168,7 @@ class Platform(pygame.sprite.Sprite):
     def draw_tetris_platform(self, width, height):
         """Draw a Tetris-like moving platform for Level 6."""
         # Neon colors for computer theme
-        neon_colors = [(0, 255, 255), (255, 0, 255), (0, 255, 0), (255, 255, 0), (255, 0, 0)]
+        neon_colors = [NEON_CYAN, NEON_MAGENTA, NEON_GREEN, NEON_YELLOW, NEON_RED]
         base_color = random.choice(neon_colors)
         
         # Platform base
@@ -1354,7 +1372,7 @@ class Platform(pygame.sprite.Sprite):
     def draw_neon_platform(self, width, height):
         """Draw a glowing neon platform for Level 10."""
         # Neon colors
-        neon_colors = [(255, 0, 255), (0, 255, 255), (255, 255, 0), (0, 255, 0), (255, 0, 0)]
+        neon_colors = [NEON_MAGENTA, NEON_CYAN, NEON_YELLOW, NEON_GREEN, NEON_RED]
         base_color = random.choice(neon_colors)
         
         # Platform base
@@ -1362,17 +1380,17 @@ class Platform(pygame.sprite.Sprite):
         pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
         
         # Neon glow effect
-        pygame.draw.rect(self.image, (255, 255, 255), (2, 2, width-4, height-4), 1)
+        pygame.draw.rect(self.image, NEON_WHITE, (2, 2, width-4, height-4), 1)
         
         # Circuit pattern
         for x in range(0, width, 10):
             for y in range(0, height, 10):
                 if (x // 10 + y // 10) % 2 == 0:
-                    pygame.draw.circle(self.image, (255, 255, 255), (x + 5, y + 5), 1)
+                    pygame.draw.circle(self.image, NEON_WHITE, (x + 5, y + 5), 1)
         
         # Glowing edges
-        pygame.draw.line(self.image, (255, 255, 255), (0, 0), (width, 0), 2)
-        pygame.draw.line(self.image, (255, 255, 255), (0, height-1), (width, height-1), 2)
+        pygame.draw.line(self.image, NEON_WHITE, (0, 0), (width, 0), 2)
+        pygame.draw.line(self.image, NEON_WHITE, (0, height-1), (width, height-1), 2)
     
     def draw_spiky_platform(self, width, height):
         """Draw a spiky platform that kills the player on contact."""
@@ -1485,10 +1503,10 @@ class Platform(pygame.sprite.Sprite):
                     
             elif theme_name == "Neon Night":
                 # Neon theme - bright purple platform with glow
-                self.image.fill((138, 43, 226))  # Blue Violet
+                self.image.fill(NEON_PURPLE)  # Blue Violet
                 pygame.draw.rect(self.image, (75, 0, 130), (0, 0, width, height), 2)
                 # Neon glow
-                pygame.draw.rect(self.image, (255, 255, 255), (1, 1, width-2, height-2), 1)
+                pygame.draw.rect(self.image, NEON_WHITE, (1, 1, width-2, height-2), 1)
                 
             else:
                 # Fallback to cloud theme for unknown themes
@@ -1788,6 +1806,7 @@ class Platform(pygame.sprite.Sprite):
 
 class Powerup(pygame.sprite.Sprite):
     def __init__(self, x, y, powerup_type="coin"):
+        """Create a powerup at (x, y). Type controls visuals and effect."""
         super().__init__()
         self.powerup_type = powerup_type
         self.image = pygame.Surface((24, 24), pygame.SRCALPHA)
@@ -2144,6 +2163,7 @@ class BonusNPC(pygame.sprite.Sprite):
 
 class Obstacle(pygame.sprite.Sprite):
     def __init__(self, x, y, obstacle_type="spike"):
+        """Construct an obstacle (spike, coral, firewall, etc.) at (x, y)."""
         super().__init__()
         self.obstacle_type = obstacle_type
         if obstacle_type == "spike":

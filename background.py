@@ -17,6 +17,13 @@ class Background:
 
     def set_theme(self, theme):
         self.theme = theme
+    
+    def set_screen_dimensions(self, width, height):
+        """Update screen dimensions and clear cached backgrounds for regeneration."""
+        self.screen_width = width
+        self.screen_height = height
+        # Clear cache so backgrounds are regenerated with new dimensions
+        self._custom_bg_images = {}
 
     def _load_custom_background(self, level_name, is_bonus_room=False):
         """Load custom background image for specific level or bonus room."""

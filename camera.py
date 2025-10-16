@@ -33,5 +33,10 @@ class Camera:
         """Update the level dimensions when level changes."""
         self.level_width = width
         self.level_height = height
+    
+    def set_screen_dimensions(self, width, height):
+        """Update the screen dimensions when window is resized."""
+        self.screen_width = width
+        self.screen_height = height
 
 
