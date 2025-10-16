@@ -241,7 +241,7 @@ class Game:
             return  # Skip normal level generation
         # Ultimate challenge level - Neon Night
         elif self.theme.get("name") == "Neon Night":
-            enemy_count += 20  # Maximum enemies for ultimate challenge
+            enemy_count += 50  # Maximum enemies for ultimate challenge with many flying enemies
         rng = random.Random(9000 + self.current_level)
         for _ in range(enemy_count):
             x = rng.randint(300, level_def["width"] - 300)
@@ -255,6 +255,8 @@ class Game:
                 air_chance = 0.7  # Most enemies are ghosts in the sky
             elif self.theme.get("name") == "Frost and Furious":
                 air_chance = 0.8  # Most enemies are in the sky (no safe ground!)
+            elif self.theme.get("name") == "Neon Night":
+                air_chance = 0.75  # Many flying enemies for ultimate challenge
             if rng.random() < air_chance:
                 y = rng.randint(100, 300)  # Higher up for air enemies
             else:
@@ -273,6 +275,9 @@ class Game:
             elif self.theme.get("name") == "Concrete Jungle":
                 # Prefer air enemies (birds) for city level
                 weights = [3, 3, 3, 3, 3, 8, 6]  # Favor air_bat and air_dragon (birds)
+            elif self.theme.get("name") == "Neon Night":
+                # Heavily favor flying enemies for ultimate challenge
+                weights = [2, 2, 2, 2, 3, 10, 9]  # Strongly favor air_bat and air_dragon
             else:
                 weights = [4, 3 + level_def["difficulty"], 3, 1 + level_def["difficulty"]//2, 
                          2 + level_def["difficulty"], 1 + level_def["difficulty"]//3, 1 + level_def["difficulty"]//4]
