@@ -1,3 +1,14 @@
+"""Entity and rendering logic for Rat Race.
+
+Defines sprite classes and gameplay primitives:
+- Player: input handling, physics, collisions, animation
+- Enemy: archetypes (basic/fast/big/jumper/air/etc.) with behaviors
+- Platform: themed tiles and moving variants, including fading/spiky
+- Powerup, Plant, Obstacle: collectible and environmental items
+
+Used by `game.py` to build each level.
+"""
+
 import random
 import math
 import pygame

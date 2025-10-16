@@ -1,3 +1,8 @@
+"""Background rendering utilities for Rat Race.
+
+Handles gradient skies and themed backgrounds per level.
+"""
+
 import pygame
 import os
 from constants import SCREEN_WIDTH, SCREEN_HEIGHT

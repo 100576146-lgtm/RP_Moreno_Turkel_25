@@ -1,3 +1,8 @@
+"""Camera utilities for Rat Race.
+
+Provides a simple camera that tracks the player and clamps to level bounds.
+"""
+
 from constants import SCREEN_WIDTH, SCREEN_HEIGHT, LEVEL_WIDTH, LEVEL_HEIGHT
 
 

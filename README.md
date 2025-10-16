@@ -36,17 +36,62 @@ A pygame-based platformer game inspired by the original Mario games.
   - R or SPACE to restart from game over screen
   - M to return to main menu from game over screen
 
-## Installation and Running
+## How to Run
 
-1. Install pygame:
-   ```bash
-   pip install -r requirements.txt
-   ```
+Prerequisites:
+- Python 3.8+ installed
+- Recommended: create and activate a virtual environment
 
-2. Run the game:
-   ```bash
-   python3 mario_platformer.py
-   ```
+Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+Run the game (from the repository root):
+```bash
+python3 mario_platformer.py
+```
+
+On Windows, you can also use:
+```powershell
+py -3 mario_platformer.py
+```
+
+Alternatively, you can run the file directly by launching `mario_platformer.py`.
+
+## Project Structure
+
+```
+RP_Moreno_Turkel_25/
+  game.py                # Main game (full-featured) entry and loop
+  mario_platformer.py    # Simple entry point to run the game
+  entities.py            # Player, Enemy, Platform, Powerup, Obstacle, etc.
+  background.py          # Gradient skies and themed backgrounds
+  camera.py              # Camera tracking and level bounds
+  audio.py               # Audio helpers (pygame mixer)
+  constants.py           # Shared constants: physics, colors, dimensions
+  levels.py              # Level loading helpers
+  level_defs/            # Per-level definitions (width/height/theme)
+  sprites_sheet_*/       # Sprite sheets and cropped frames
+  requirements.txt       # Python dependencies
+  README.md              # This file
+```
+
+## Developer Guide
+
+- Entry point: run `python3 mario_platformer.py`
+- Game loop lives in `game.py` (`Game.update` / `Game.draw`)
+- Player physics and collisions in `entities.py` (`Player` class)
+- Add new enemies in `entities.py` (`Enemy` variants)
+- Level themes come from `level_defs/level_*.py` and `levels.py`
+- Camera clamps to level width via `camera.py`
+
+### Contributing
+
+1. Create a virtualenv and install requirements
+2. Make changes with clear docstrings and small commits
+3. Test by running the game locally
+4. Submit PRs with a brief description and screenshots if UI-related
 
 ## Gameplay
 

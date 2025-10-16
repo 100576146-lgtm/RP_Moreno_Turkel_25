@@ -1,3 +1,14 @@
+"""Main game loop and level orchestration for Rat Race.
+
+This module contains the primary `Game` class, responsible for:
+- Loading themes/levels and building their content
+- Creating and updating sprites (player, platforms, enemies, obstacles, powerups)
+- Handling game states (menu, playing, bonus room, level complete, game over)
+- Drawing frames and handling input
+
+See README for how to run the game. For a quick start, run `python3 mario_platformer.py`.
+"""
+
 import pygame
 import sys
 import random
@@ -14,6 +25,11 @@ from smart_level_generator import SmartLevelGenerator
 
 
 class Game:
+    """Top-level game controller.
+
+    Manages lifecycle (start, restart, advance), state transitions, content
+    creation for each themed level, player instantiation, and rendering.
+    """
     def __init__(self, fullscreen=False):
         if fullscreen:
             self.screen = pygame.display.set_mode((FULLSCREEN_WIDTH, FULLSCREEN_HEIGHT), pygame.FULLSCREEN)

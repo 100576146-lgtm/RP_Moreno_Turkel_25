@@ -1,3 +1,8 @@
+"""Audio helpers for Rat Race.
+
+Thin wrapper(s) around pygame mixer for sound effects and music.
+"""
+
 import pygame
 
 class SoundManager:
