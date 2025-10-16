@@ -47,10 +47,24 @@ class Background:
         
         try:
             if os.path.exists(bg_path):
-                # Load and scale the image to fit the screen with high quality
+                # Load the image with enhanced quality
                 bg_image = pygame.image.load(bg_path)
-                # Use smoothscale for better quality
+                
+                # Special handling for Level 5 (Boo Who?) - cut bottom 1/10 and recenter
+                if level_name == "Boo Who?":
+                    # Cut bottom 1/10 of the image
+                    original_height = bg_image.get_height()
+                    new_height = int(original_height * 0.9)  # Remove bottom 10%
+                    bg_image = bg_image.subsurface((0, 0, bg_image.get_width(), new_height))
+                
+                # Enhanced quality scaling - use scale2x for better quality
+                # First scale to 2x size for better quality, then scale down
+                temp_width = self.screen_width * 2
+                temp_height = self.screen_height * 2
+                bg_image = pygame.transform.smoothscale(bg_image, (temp_width, temp_height))
+                # Then scale down with smoothscale for final quality
                 bg_image = pygame.transform.smoothscale(bg_image, (self.screen_width, self.screen_height))
+                
                 self._custom_bg_images[cache_key] = bg_image
                 return bg_image
         except pygame.error as e:

@@ -10,11 +10,12 @@ from sprite_animator import SpriteAnimator
 
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, x, y, sound_manager=None):
+    def __init__(self, x, y, sound_manager=None, speed_multiplier=1.0):
         super().__init__()
         
         # Initialize sprite animator
         self.sprite_animator = SpriteAnimator()
+        self.speed_multiplier = speed_multiplier
         
         # Get initial sprite and set up rect
         self.image = self.sprite_animator.get_current_sprite()
@@ -142,8 +143,9 @@ class Player(pygame.sprite.Sprite):
         self.vel_x = 0
         old_facing = self.facing_right
         
-        # Calculate speed and jump based on star powerup
-        current_speed = PLAYER_SPEED * 1.5 if self.star_active else PLAYER_SPEED
+        # Calculate speed and jump based on star powerup and speed multiplier
+        base_speed = PLAYER_SPEED * self.speed_multiplier
+        current_speed = base_speed * 1.5 if self.star_active else base_speed
         current_jump = JUMP_STRENGTH * 1.3 if self.star_active else JUMP_STRENGTH
         
         # Determine animation state based on movement and physics
@@ -189,6 +191,9 @@ class Player(pygame.sprite.Sprite):
             # Skip collision with space rocks (visual only)
             if hasattr(platform, 'platform_type') and platform.platform_type in ["space_rock"]:
                 continue
+            # Spiky platforms kill the player on contact
+            if hasattr(platform, 'platform_type') and platform.platform_type == "spiky_platform":
+                return "hit"  # Player dies when touching spiky platform
             if self.vel_y > 0:
                 # Check if platform is solid (for fading platforms)
                 if hasattr(platform, 'is_solid') and not platform.is_solid:
@@ -951,6 +956,10 @@ class Platform(pygame.sprite.Sprite):
             self.draw_fire_escape(width, height)
         elif self.platform_type == "neon_platform":
             self.draw_neon_platform(width, height)
+        elif self.platform_type == "spiky_platform":
+            self.draw_spiky_platform(width, height)
+        elif self.platform_type == "vertical_moving":
+            self.draw_vertical_moving_platform(width, height)
         else:
             # Use theme-based styling for regular platforms
             theme_name = self.theme.get('name', 'default')
@@ -1333,6 +1342,171 @@ class Platform(pygame.sprite.Sprite):
         pygame.draw.line(self.image, (255, 255, 255), (0, 0), (width, 0), 2)
         pygame.draw.line(self.image, (255, 255, 255), (0, height-1), (width, height-1), 2)
     
+    def draw_spiky_platform(self, width, height):
+        """Draw a spiky platform that kills the player on contact."""
+        # Platform base (dark red to indicate danger)
+        self.image.fill((100, 0, 0))
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        
+        # Spikes covering the entire platform
+        spike_height = height // 2
+        for x in range(0, width, 8):
+            spike_points = [
+                (x, height),
+                (x + 4, height - spike_height),
+                (x + 8, height)
+            ]
+            pygame.draw.polygon(self.image, (150, 0, 0), spike_points)
+            pygame.draw.polygon(self.image, BLACK, spike_points, 1)
+        
+        # Warning effect - pulsing red
+        for x in range(0, width, 12):
+            pygame.draw.line(self.image, (255, 100, 100), (x, 2), (x+8, 2), 1)
+            pygame.draw.line(self.image, (255, 100, 100), (x, height-3), (x+8, height-3), 1)
+    
+    def draw_vertical_moving_platform(self, width, height):
+        """Draw a vertically moving platform that matches the level theme when possible, cloud otherwise."""
+        theme_name = self.theme.get('name', 'default')
+        
+        try:
+            if theme_name == "The Big Melt-down":
+                # Cheese theme - yellow platform with holes
+                self.image.fill((255, 215, 0))  # Gold
+                pygame.draw.rect(self.image, (139, 69, 19), (0, 0, width, height), 2)
+                # Cheese holes
+                for i in range(3):
+                    x = (i + 1) * width // 4
+                    y = height // 2
+                    pygame.draw.circle(self.image, (255, 255, 255), (x, y), 4)
+                    
+            elif theme_name == "Moss-t Be Joking":
+                # Jungle theme - green platform with leaves
+                self.image.fill((34, 139, 34))  # Forest Green
+                pygame.draw.rect(self.image, (0, 100, 0), (0, 0, width, height), 2)
+                # Jungle leaves
+                for x in range(0, width, 15):
+                    pygame.draw.ellipse(self.image, (0, 150, 0), (x, 2, 8, 6))
+                    
+            elif theme_name == "Smelted Dreams":
+                # Metal theme - silver platform with rivets
+                self.image.fill((192, 192, 192))  # Silver
+                pygame.draw.rect(self.image, (105, 105, 105), (0, 0, width, height), 2)
+                # Metal rivets
+                for x in range(width//6, width, width//3):
+                    pygame.draw.circle(self.image, (169, 169, 169), (x, height//2), 2)
+                    
+            elif theme_name == "Frost and Furious":
+                # Ice theme - blue/white platform with crystals
+                self.image.fill((173, 216, 230))  # Light Blue
+                pygame.draw.rect(self.image, (135, 206, 235), (0, 0, width, height), 2)
+                # Ice crystals
+                for x in range(0, width, 12):
+                    pygame.draw.polygon(self.image, (255, 255, 255), 
+                                      [(x, height//2), (x+3, height//2-3), (x+6, height//2)])
+                    
+            elif theme_name == "Boo Who?":
+                # Ghost theme - ghostly blue platform
+                self.image.fill((150, 150, 255))
+                pygame.draw.rect(self.image, (0, 0, 0), (0, 0, width, height), 2)
+                # Ghostly effect
+                pygame.draw.rect(self.image, (200, 200, 255), (1, 1, width-2, height-2), 1)
+                # Ethereal glow effect
+                for x in range(0, width, 8):
+                    pygame.draw.line(self.image, (255, 255, 255), (x, 1), (x+4, 1), 1)
+                    pygame.draw.line(self.image, (255, 255, 255), (x, height-2), (x+4, height-2), 1)
+                    
+            elif theme_name == "404: Floor Not Found":
+                # Digital theme - neon green platform
+                self.image.fill((0, 255, 0))  # Neon Green
+                pygame.draw.rect(self.image, (0, 200, 0), (0, 0, width, height), 2)
+                # Digital pattern
+                for x in range(0, width, 8):
+                    for y in range(0, height, 8):
+                        if (x // 8 + y // 8) % 2 == 0:
+                            pygame.draw.rect(self.image, (0, 180, 0), (x, y, 4, 4))
+                            
+            elif theme_name == "Pasta La Vista":
+                # Pasta theme - orange platform with strands
+                self.image.fill((255, 165, 0))  # Orange
+                pygame.draw.rect(self.image, (255, 140, 0), (0, 0, width, height), 2)
+                # Pasta strands
+                for i in range(3):
+                    y = height//4 + i * height//6
+                    pygame.draw.line(self.image, (255, 255, 255), (0, y), (width, y), 2)
+                    
+            elif theme_name == "Concrete Jungle":
+                # Concrete theme - gray platform with texture
+                self.image.fill((128, 128, 128))  # Gray
+                pygame.draw.rect(self.image, (105, 105, 105), (0, 0, width, height), 2)
+                # Concrete texture
+                for x in range(0, width, 6):
+                    pygame.draw.line(self.image, (169, 169, 169), (x, 0), (x, height), 1)
+                    
+            elif theme_name == "Kraken Me Up":
+                # Underwater theme - blue-green platform with bubbles
+                self.image.fill((0, 139, 139))  # Dark Cyan
+                pygame.draw.rect(self.image, (0, 100, 100), (0, 0, width, height), 2)
+                # Bubbles
+                for i in range(4):
+                    x = (i + 1) * width // 5
+                    pygame.draw.circle(self.image, (173, 216, 230), (x, height//3), 2)
+                    
+            elif theme_name == "Neon Night":
+                # Neon theme - bright purple platform with glow
+                self.image.fill((138, 43, 226))  # Blue Violet
+                pygame.draw.rect(self.image, (75, 0, 130), (0, 0, width, height), 2)
+                # Neon glow
+                pygame.draw.rect(self.image, (255, 255, 255), (1, 1, width-2, height-2), 1)
+                
+            else:
+                # Fallback to cloud theme for unknown themes
+                raise ValueError("Unknown theme, using cloud fallback")
+                
+        except:
+            # Fallback to cloud styling if theme matching fails
+            self.image.fill((255, 255, 255))
+            # Cloud shape - rounded and fluffy
+            pygame.draw.ellipse(self.image, (240, 240, 240), (0, height//4, width, height//2))
+            
+            # Cloud bumps for fluffy effect
+            bump_size = height//3
+            for i in range(3):
+                x = i * width//3 + width//6
+                pygame.draw.circle(self.image, (250, 250, 250), (x, height//2), bump_size)
+            
+            # Soft shadow/border
+            pygame.draw.ellipse(self.image, (220, 220, 220), (0, height//4, width, height//2), 1)
+            
+            # Cloud texture - subtle dots
+            for x in range(0, width, 8):
+                for y in range(height//4, 3*height//4, 6):
+                    if (x + y) % 12 == 0:
+                        pygame.draw.circle(self.image, (235, 235, 235), (x, y), 1)
+        
+        # Add up/down arrows to indicate vertical movement (common to all themes)
+        arrow_size = min(width//8, height//6, 4)
+        # Up arrow
+        up_arrow_x = width//4
+        up_arrow_y = height//3
+        up_arrow_points = [
+            (up_arrow_x, up_arrow_y + arrow_size),
+            (up_arrow_x - arrow_size//2, up_arrow_y),
+            (up_arrow_x + arrow_size//2, up_arrow_y)
+        ]
+        pygame.draw.polygon(self.image, (100, 100, 100), up_arrow_points)
+        pygame.draw.polygon(self.image, (50, 50, 50), up_arrow_points, 1)
+        
+        # Down arrow
+        down_arrow_x = 3*width//4
+        down_arrow_y = 2*height//3
+        down_arrow_points = [
+            (down_arrow_x, down_arrow_y - arrow_size),
+            (down_arrow_x - arrow_size//2, down_arrow_y),
+            (down_arrow_x + arrow_size//2, down_arrow_y)
+        ]
+        pygame.draw.polygon(self.image, (100, 100, 100), down_arrow_points)
+        pygame.draw.polygon(self.image, (50, 50, 50), down_arrow_points, 1)
+    
     def update(self):
         """Update platform behavior (for moving and falling platforms)."""
         if self.platform_type == "moving":
@@ -1362,6 +1536,11 @@ class Platform(pygame.sprite.Sprite):
             # Pasta moving platforms move vertically to help escape meatballs
             self.move_offset += 0.03
             self.rect.y = self.original_y + int(50 * math.sin(self.move_offset))
+        elif self.platform_type == "vertical_moving":
+            # Vertical moving platforms for Level 5 (Boo Who?)
+            self.move_offset += 0.025
+            import math
+            self.rect.y = self.original_y + int(60 * math.sin(self.move_offset))
     
     # Removed trigger_fall method - no longer using falling clouds
     
@@ -1568,6 +1747,11 @@ class Platform(pygame.sprite.Sprite):
         if self.platform_type == "moving":
             self.move_offset += 0.02
             self.rect.x = self.original_x + int(50 * pygame.math.Vector2(1, 0).rotate(self.move_offset * 180 / 3.14159).x)
+        elif self.platform_type == "vertical_moving":
+            # Vertical moving platforms for Level 5 (Boo Who?)
+            self.move_offset += 0.025
+            import math
+            self.rect.y = self.original_y + int(60 * math.sin(self.move_offset))
 
 
 class Powerup(pygame.sprite.Sprite):

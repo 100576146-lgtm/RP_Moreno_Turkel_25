@@ -128,6 +128,12 @@ class Game:
         self.theme = level_def["theme"]
         self.bg.set_theme(self.theme)
         
+        # Reset Geometry Dash mode for non-Geometry Dash levels
+        if not (self.theme.get("name") == "404: Floor Not Found"):
+            self.geometry_dash_mode = False
+            self.player_speed_multiplier = 1.0
+            self.countdown_active = False
+        
         # Update camera with new level dimensions
         self.camera.set_level_dimensions(level_def["width"], level_def["height"])
 
@@ -195,7 +201,7 @@ class Game:
             enemy_count += 8  # Doubled from 4 to 8
         # Make ghost level challenging with lots of ghost enemies
         elif self.theme.get("name") == "Boo Who?":
-            enemy_count += 10  # Many ghost enemies for challenge
+            enemy_count += 20  # Many enemies to make Level 5 very hard
         # Make ice level extremely hard with no safe ground
         elif self.theme.get("name") == "Frost and Furious":
             enemy_count += 15  # Lots of sky enemies since no safe ground
@@ -273,6 +279,21 @@ class Game:
                 floor_enemy = Enemy(x, y, etype, theme=self.theme)
                 self.enemies.add(floor_enemy)
                 self.all_sprites.add(floor_enemy)
+        
+        # Add many strategic enemies for Level 5 (Boo Who?) to make it very challenging
+        if self.theme.get("name") == "Boo Who?":
+            strategic_enemy_rng = random.Random(7777 + self.current_level)
+            # Add many enemies at strategic heights for maximum challenge
+            strategic_enemy_count = 8 + level_def["difficulty"] * 3  # Many enemies for hard level
+            for _ in range(strategic_enemy_count):
+                x = strategic_enemy_rng.randint(200, level_def["width"] - 200)
+                y = strategic_enemy_rng.randint(100, level_def["height"] - 250)
+                # Use a mix of air enemies for maximum challenge
+                enemy_types = ["air_bat", "air_dragon", "jumper"]
+                etype = strategic_enemy_rng.choice(enemy_types)
+                strategic_enemy = Enemy(x, y, etype, theme=self.theme)
+                self.enemies.add(strategic_enemy)
+                self.all_sprites.add(strategic_enemy)
 
         # Place powerups on or near platforms for accessibility
         powerup_positions = []
@@ -442,10 +463,10 @@ class Game:
         # Add moving cloud platforms for Level 5 (Boo Who?)
         if self.theme.get("name") == "Boo Who?":
             cloud_rng = random.Random(1111 + self.current_level)
-            cloud_count = 8 + level_def["difficulty"] * 2  # Moving cloud platforms
+            cloud_count = 6 + level_def["difficulty"]  # Reasonable amount of moving platforms
             for _ in range(cloud_count):
                 x = cloud_rng.randint(300, level_def["width"] - 200)
-                y = cloud_rng.randint(150, level_def["height"] - 200)
+                y = cloud_rng.randint(200, level_def["height"] - 200)
                 cloud_platform = Platform(x, y, 120, 30, platform_type="moving", theme=self.theme)
                 self.platforms.add(cloud_platform)
                 self.all_sprites.add(cloud_platform)
@@ -462,31 +483,33 @@ class Game:
                 space_rock = Platform(x, y, rock_size[0], rock_size[1], platform_type="space_rock", theme=self.theme)
                 self.platforms.add(space_rock)
                 self.all_sprites.add(space_rock)
+            
+            # Add spiky platforms that kill the player
+            spiky_rng = random.Random(3333 + self.current_level)
+            spiky_count = 4 + level_def["difficulty"]  # Reasonable amount of spiky platforms
+            for _ in range(spiky_count):
+                x = spiky_rng.randint(250, level_def["width"] - 250)
+                y = spiky_rng.randint(200, level_def["height"] - 200)
+                # Create spiky platform that kills player
+                spiky_platform = Platform(x, y, 100, 30, platform_type="spiky_platform", theme=self.theme)
+                self.platforms.add(spiky_platform)
+                self.all_sprites.add(spiky_platform)
+            
+            # Add a few vertical moving platforms for Level 5
+            vertical_rng = random.Random(4444 + self.current_level)
+            vertical_count = 3 + level_def["difficulty"]  # Small amount of vertical platforms
+            for _ in range(vertical_count):
+                x = vertical_rng.randint(300, level_def["width"] - 300)
+                y = vertical_rng.randint(200, level_def["height"] - 250)
+                # Create vertically moving platform
+                vertical_platform = Platform(x, y, 120, 25, platform_type="vertical_moving", theme=self.theme)
+                self.platforms.add(vertical_platform)
+                self.all_sprites.add(vertical_platform)
         
-        # Add moving Tetris platforms for Level 6 (404: Floor Not Found)
+        # Create Geometry Dash-style Level 6 (404: Floor Not Found)
         if self.theme.get("name") == "404: Floor Not Found":
-            tetris_rng = random.Random(3333 + self.current_level)
-            tetris_count = 6 + level_def["difficulty"] * 2  # Moving Tetris platforms
-            for _ in range(tetris_count):
-                x = tetris_rng.randint(200, level_def["width"] - 200)
-                y = tetris_rng.randint(200, level_def["height"] - 200)
-                # Different Tetris block shapes
-                tetris_shapes = [(80, 40), (120, 30), (60, 60), (100, 50)]
-                shape = tetris_rng.choice(tetris_shapes)
-                tetris_platform = Platform(x, y, shape[0], shape[1], platform_type="tetris_moving", theme=self.theme)
-                self.platforms.add(tetris_platform)
-                self.all_sprites.add(tetris_platform)
-        
-        # Add fading platforms for Level 6 (404: Floor Not Found)
-        if self.theme.get("name") == "404: Floor Not Found":
-            fade_rng = random.Random(4444 + self.current_level)
-            fade_count = 8 + level_def["difficulty"] * 2  # Fading platforms
-            for _ in range(fade_count):
-                x = fade_rng.randint(300, level_def["width"] - 200)
-                y = fade_rng.randint(250, level_def["height"] - 150)
-                fade_platform = Platform(x, y, 100, 30, platform_type="fading_platform", theme=self.theme)
-                self.platforms.add(fade_platform)
-                self.all_sprites.add(fade_platform)
+            self._create_geometry_dash_level()
+            return  # Skip normal enemy generation for Geometry Dash level
         
         # Add pasta slides and moving platforms for Level 7 (Pasta La Vista)
         if self.theme.get("name") == "Pasta La Vista":
@@ -873,6 +896,106 @@ class Game:
         # Clean up saved state
         delattr(self, 'saved_level_state')
     
+    def _create_geometry_dash_level(self):
+        """Create a Geometry Dash-style level with closing spike wall, fixed path, and increased speed."""
+        level_def = self.levels[self.current_level]
+        
+        # Clear existing enemies for Geometry Dash level
+        self.enemies.empty()
+        
+        # Make level twice as long
+        level_width = level_def["width"] * 2
+        level_def["width"] = level_width
+        
+        # Create fixed path with platforms above and below
+        path_rng = random.Random(9999 + self.current_level)
+        path_height = 200  # Height of the main path
+        path_y = level_def["height"] // 2 - path_height // 2
+        
+        # Create computer-themed ceiling and floor platforms to lock player in
+        for x in range(0, level_width, 100):
+            # Ceiling platform - computer themed
+            ceiling_platform = Platform(x, path_y - 50, 100, 30, platform_type="fading_platform", theme=self.theme)
+            self.platforms.add(ceiling_platform)
+            self.all_sprites.add(ceiling_platform)
+            
+            # Floor platform - computer themed
+            floor_platform = Platform(x, path_y + path_height, 100, 30, platform_type="fading_platform", theme=self.theme)
+            self.platforms.add(floor_platform)
+            self.all_sprites.add(floor_platform)
+        
+        # Add computer-themed obstacles (spikes) with fair, jumpable gaps
+        # Max jump distance is 187 pixels, so gaps should be <= 167 pixels for safety
+        computer_spike_positions = []
+        
+        # Safe spawn area: no obstacles in first 300 pixels
+        spawn_safe_zone = 300
+        
+        # Floor spikes - create jumpable gaps (every 120-150 pixels)
+        floor_spike_x = spawn_safe_zone
+        while floor_spike_x < level_width - 100:
+            # Add 2-3 spikes in a group, then gap
+            spike_group_size = 2 + (floor_spike_x // 800) % 2  # 2-3 spikes per group
+            for i in range(spike_group_size):
+                if floor_spike_x + i * 50 < level_width:
+                    computer_spike_positions.append((floor_spike_x + i * 50, path_y + path_height - 30))
+            # Gap of 120-150 pixels (definitely jumpable)
+            gap_size = 120 + (floor_spike_x // 400) % 30  # Vary gap size, max 150px
+            floor_spike_x += spike_group_size * 50 + gap_size
+        
+        # Ceiling spikes - create jumpable gaps (every 120-150 pixels)
+        ceiling_spike_x = spawn_safe_zone
+        while ceiling_spike_x < level_width - 100:
+            # Add 2-3 spikes in a group, then gap
+            spike_group_size = 2 + (ceiling_spike_x // 600) % 2  # 2-3 spikes per group
+            for i in range(spike_group_size):
+                if ceiling_spike_x + i * 50 < level_width:
+                    computer_spike_positions.append((ceiling_spike_x + i * 50, path_y - 20))
+            # Gap of 120-150 pixels (definitely jumpable)
+            gap_size = 120 + (ceiling_spike_x // 400) % 30  # Vary gap size, max 150px
+            ceiling_spike_x += spike_group_size * 50 + gap_size
+        
+        # Middle height obstacles - strategic placement for jumping challenges
+        middle_spike_x = spawn_safe_zone + 100
+        while middle_spike_x < level_width - 100:
+            # Single middle spike every 200-250 pixels
+            computer_spike_positions.append((middle_spike_x, path_y + 60 + (middle_spike_x // 200) % 40))
+            gap_size = 180 + (middle_spike_x // 400) % 40  # Max 220px, but these are middle spikes so less critical
+            middle_spike_x += gap_size
+        
+        for x, y in computer_spike_positions:
+            if x < level_width:
+                spike_obstacle = Obstacle(x, y, "spike")
+                self.obstacles.add(spike_obstacle)
+                self.all_sprites.add(spike_obstacle)
+        
+        # No enemies in Geometry Dash level - focus on obstacle navigation
+        
+        # Store level properties for Geometry Dash mechanics
+        self.geometry_dash_mode = True
+        self.spike_wall_x = 0  # Starting position of spike wall
+        self.spike_wall_speed = 1.5  # Match player speed (1.5x base speed)
+        self.player_speed_multiplier = 1.5  # 1.5x player speed (reduced from 2x)
+        self.countdown_timer = 180  # 3 seconds at 60 FPS
+        self.countdown_active = True  # Countdown is active initially
+        
+        # Course vertical movement properties
+        self.course_vertical_offset = 0  # Vertical offset for course movement
+        self.course_vertical_speed = 0.05  # Speed of vertical movement
+        self.course_vertical_direction = 1  # 1 for down, -1 for up
+        self.course_vertical_range = 100  # How far up/down the course moves
+        
+        # Add computer-themed warning sign at spawn area
+        self.run_sign_x = 300  # Position of the RUN sign
+        self.run_sign_y = path_y + 50  # Middle of the path
+        self.computer_warning_text = "EXECUTE!"  # Computer-themed warning
+        
+        # Set special spawn position in safe zone (no obstacles)
+        self.geometry_dash_spawn_x = 150  # Spawn in safe zone, before obstacles start
+        self.geometry_dash_spawn_y = path_y + 50  # Higher up in the path, not on the floor
+        
+        print(f"Geometry Dash Level 6 created: {level_width} pixels wide, spike wall closing in!")
+    
     def _create_underwater_maze(self):
         """Create the special underwater maze level."""
         # Set maze dimensions
@@ -1042,7 +1165,14 @@ class Game:
         # Recreate level for the selected level
         try:
             self.create_level()
-            self.player = Player(100, 400, self.sound_manager)
+            # Create player with speed multiplier for Geometry Dash mode
+            speed_multiplier = getattr(self, 'player_speed_multiplier', 1.0)
+            # Use special spawn position for Geometry Dash level
+            if hasattr(self, 'geometry_dash_spawn_x') and hasattr(self, 'geometry_dash_spawn_y'):
+                spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
+            else:
+                spawn_x, spawn_y = 100, 400
+            self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier)
             self.all_sprites.add(self.player)
             self.camera.x = 0
             self.camera.y = 0
@@ -1067,16 +1197,14 @@ class Game:
             self.checkpoints.empty()
             self.keys.empty()
             self.last_checkpoint = None
-            self.create_level()
-            self.player = Player(100, 400, self.sound_manager)
-            self.all_sprites.add(self.player)
-            self.camera.x = 0
-            self.camera.y = 0
-            self.state = GameState.PLAYING
-        else:
-            # All levels complete - update high score and return to menu
-            self.update_high_score()
-            self.state = GameState.MENU
+        self.create_level()
+        # Create player with speed multiplier for Geometry Dash mode
+        speed_multiplier = getattr(self, 'player_speed_multiplier', 1.0)
+        self.player = Player(100, 400, self.sound_manager, speed_multiplier)
+        self.all_sprites.add(self.player)
+        self.camera.x = 0
+        self.camera.y = 0
+        self.state = GameState.PLAYING
 
     def restart_game(self):
         self.state = GameState.PLAYING
@@ -1099,7 +1227,14 @@ class Game:
         # Clear accessed doors when restarting
         self.accessed_hidden_doors.clear()
         self.create_level()
-        self.player = Player(100, 400, self.sound_manager)
+        # Create player with speed multiplier for Geometry Dash mode
+        speed_multiplier = getattr(self, 'player_speed_multiplier', 1.0)
+        # Use special spawn position for Geometry Dash level
+        if hasattr(self, 'geometry_dash_spawn_x') and hasattr(self, 'geometry_dash_spawn_y'):
+            spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
+        else:
+            spawn_x, spawn_y = 100, 400
+        self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier)
         self.all_sprites.add(self.player)
         self.camera.x = 0
         self.camera.y = 0
@@ -1109,7 +1244,14 @@ class Game:
             if self._needs_initial_load and self.state == GameState.LOADING:
                 # Perform heavy setup now that we've shown at least one frame
                 self.create_level()
-                self.player = Player(100, 400, self.sound_manager)
+                # Create player with speed multiplier for Geometry Dash mode
+                speed_multiplier = getattr(self, 'player_speed_multiplier', 1.0)
+                # Use special spawn position for Geometry Dash level
+                if hasattr(self, 'geometry_dash_spawn_x') and hasattr(self, 'geometry_dash_spawn_y'):
+                    spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
+                else:
+                    spawn_x, spawn_y = 100, 400
+                self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier)
                 self.all_sprites.add(self.player)
                 self._needs_initial_load = False
                 self.state = GameState.MENU
@@ -1122,7 +1264,48 @@ class Game:
             return
         if self.state == GameState.PLAYING:
             self.camera.update(self.player)
-            result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
+            
+            # Handle Geometry Dash spike wall mechanics
+            if hasattr(self, 'geometry_dash_mode') and self.geometry_dash_mode:
+                # Handle course vertical movement
+                if hasattr(self, 'course_vertical_offset'):
+                    self.course_vertical_offset += self.course_vertical_speed * self.course_vertical_direction
+                    
+                    # Reverse direction when hitting limits
+                    if self.course_vertical_offset > self.course_vertical_range:
+                        self.course_vertical_direction = -1
+                    elif self.course_vertical_offset < -self.course_vertical_range:
+                        self.course_vertical_direction = 1
+                    
+                    # Move all platforms and obstacles vertically
+                    for platform in self.platforms:
+                        platform.rect.y += int(self.course_vertical_speed * self.course_vertical_direction)
+                    for obstacle in self.obstacles:
+                        obstacle.rect.y += int(self.course_vertical_speed * self.course_vertical_direction)
+                
+                # Handle countdown timer
+                if hasattr(self, 'countdown_active') and self.countdown_active:
+                    self.countdown_timer -= 1
+                    if self.countdown_timer <= 0:
+                        self.countdown_active = False
+                        print("COUNTDOWN OVER! Spike wall is now moving!")
+                
+                # Only move spike wall after countdown is over
+                if hasattr(self, 'countdown_active') and not self.countdown_active:
+                    # Move spike wall closer to player
+                    self.spike_wall_x += self.spike_wall_speed
+                    
+                    # Check if spike wall caught up to player
+                    if self.spike_wall_x >= self.player.rect.x - 50:
+                        # Player is caught by spike wall - death
+                        result = "hit"
+                    else:
+                        result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
+                else:
+                    # During countdown, normal player movement
+                    result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
+            else:
+                result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
             
             # Check for checkpoint collisions
             checkpoint_collisions = pygame.sprite.spritecollide(self.player, self.checkpoints, False)
@@ -1166,7 +1349,21 @@ class Game:
                     if self.last_checkpoint:
                         self.player.respawn(self.last_checkpoint.rect.x, self.last_checkpoint.rect.y - 50)
                     else:
-                        self.player.respawn(100, 400)
+                        # Use special spawn position for Geometry Dash level
+                        if hasattr(self, 'geometry_dash_spawn_x') and hasattr(self, 'geometry_dash_spawn_y'):
+                            respawn_x = self.geometry_dash_spawn_x
+                            respawn_y = self.geometry_dash_spawn_y
+                        else:
+                            respawn_x = 100
+                            respawn_y = 400
+                        self.player.respawn(respawn_x, respawn_y)
+                    
+                    # Reset Geometry Dash mechanics on respawn
+                    if hasattr(self, 'geometry_dash_mode') and self.geometry_dash_mode:
+                        self.spike_wall_x = 0  # Reset wall position
+                        self.countdown_timer = 180  # Reset countdown
+                        self.countdown_active = True  # Restart countdown
+                        print("RESPAWN: Spike wall reset, countdown restarted!")
             elif result == "enemy_killed":
                 self.score += 100
                 if self.score > 0 and self.score % 1000 == 0:
@@ -1263,7 +1460,14 @@ class Game:
                 
                 # Return to main level
                 self.create_level()  # Recreate the main level
-                self.player = Player(100, 400, self.sound_manager)
+                # Create player with speed multiplier for Geometry Dash mode
+                speed_multiplier = getattr(self, 'player_speed_multiplier', 1.0)
+                # Use special spawn position for Geometry Dash level
+                if hasattr(self, 'geometry_dash_spawn_x') and hasattr(self, 'geometry_dash_spawn_y'):
+                    spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
+                else:
+                    spawn_x, spawn_y = 100, 400
+                self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier)
                 self.all_sprites.add(self.player)
                 self.camera.x = 0
                 self.camera.y = 0
@@ -1382,6 +1586,64 @@ class Game:
             screen_y = sprite.rect.y - self.camera.y
             if (-sprite.rect.width < screen_x < SCREEN_WIDTH and -sprite.rect.height < screen_y < SCREEN_HEIGHT):
                 self.screen.blit(sprite.image, (screen_x, screen_y))
+        
+        # Draw Geometry Dash mode elements
+        if hasattr(self, 'geometry_dash_mode') and self.geometry_dash_mode:
+            # Draw countdown timer
+            if hasattr(self, 'countdown_active') and self.countdown_active:
+                countdown_seconds = max(1, ((self.countdown_timer - 1) // 60) + 1)
+                
+                # Computer terminal-style countdown display in center of screen
+                countdown_rect = pygame.Rect(SCREEN_WIDTH//2 - 100, SCREEN_HEIGHT//2 - 100, 200, 200)
+                pygame.draw.rect(self.screen, (0, 0, 0), countdown_rect)  # Black terminal background
+                pygame.draw.rect(self.screen, (0, 255, 0), countdown_rect, 5)  # Green terminal border
+                
+                # Draw countdown number in computer style
+                self.ui.draw_cheese_title(self.screen, str(countdown_seconds), SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 20, center=True, size=120)
+                
+                # Add computer-style status text
+                self.ui.draw_bubble_text(self.screen, "SYSTEM READY", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 40, center=True, size=16)
+                self.ui.draw_bubble_text(self.screen, ">>> INITIALIZING <<<", SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 60, center=True, size=14)
+                
+                # Draw computer-themed warning sign
+                if hasattr(self, 'run_sign_x') and hasattr(self, 'run_sign_y'):
+                    run_sign_screen_x = self.run_sign_x - self.camera.x
+                    run_sign_screen_y = self.run_sign_y - self.camera.y
+                    
+                    if -100 < run_sign_screen_x < SCREEN_WIDTH + 100:
+                        # Draw computer terminal-style sign background
+                        sign_rect = pygame.Rect(run_sign_screen_x - 70, run_sign_screen_y - 45, 140, 90)
+                        pygame.draw.rect(self.screen, (0, 0, 0), sign_rect)  # Black terminal background
+                        pygame.draw.rect(self.screen, (0, 255, 0), sign_rect, 3)  # Green terminal border
+                        
+                        # Draw computer-themed warning text
+                        warning_text = getattr(self, 'computer_warning_text', 'EXECUTE!')
+                        self.ui.draw_bubble_text(self.screen, warning_text, run_sign_screen_x, run_sign_screen_y - 10, center=True, size=20, max_width=120)
+                        
+                        # Add computer-style details
+                        self.ui.draw_bubble_text(self.screen, ">>>", run_sign_screen_x, run_sign_screen_y + 15, center=True, size=16, max_width=120)
+            else:
+                # Countdown over - draw computer-themed spike wall
+                spike_wall_screen_x = self.spike_wall_x - self.camera.x
+                if -100 < spike_wall_screen_x < SCREEN_WIDTH + 100:
+                    # Draw computer terminal-style spike wall
+                    spike_wall_rect = pygame.Rect(spike_wall_screen_x, 0, 50, SCREEN_HEIGHT)
+                    pygame.draw.rect(self.screen, (0, 0, 0), spike_wall_rect)  # Black terminal background
+                    pygame.draw.rect(self.screen, (255, 0, 0), spike_wall_rect, 3)  # Red danger border
+                    
+                    # Draw computer-style error spikes
+                    for y in range(0, SCREEN_HEIGHT, 25):
+                        spike_points = [
+                            (spike_wall_screen_x + 50, y),
+                            (spike_wall_screen_x + 35, y + 12),
+                            (spike_wall_screen_x + 50, y + 25)
+                        ]
+                        pygame.draw.polygon(self.screen, (255, 0, 0), spike_points)  # Red spikes
+                        pygame.draw.polygon(self.screen, (255, 100, 100), spike_points, 2)
+                        
+                        # Add computer error symbols
+                        if y % 50 == 0:  # Every other spike
+                            self.ui.draw_bubble_text(self.screen, "!", spike_wall_screen_x + 25, y + 12, center=True, size=12)
         for i in range(self.lives):
             self.ui.draw_heart(self.screen, 14 + i * 28, 18, 10, SOFT_PINK, BLACK)
         panel_rect = pygame.Rect(10, 44, 200, 40)
