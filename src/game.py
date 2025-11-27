@@ -148,6 +148,7 @@ class Game:
         self.bg.set_theme(self.theme)
         
         # Reset Geometry Dash mode for non-Geometry Dash levels
+        # Note: "404: Floor Not Found" is now Level 7 (was Level 6)
         if not (self.theme.get("name") == "404: Floor Not Found"):
             self.geometry_dash_mode = False
             self.player_speed_multiplier = 1.0
@@ -186,7 +187,7 @@ class Game:
         stepping_stone_enemies = generator.get_enemy_stepping_stones()
 
         # Generate checkpoints (houses or cheese wheels) at regular intervals
-        # Skip checkpoints for Level 6 (Geometry Dash - 404: Floor Not Found)
+        # Skip checkpoints for Level 7 (Geometry Dash - 404: Floor Not Found)
         if self.theme.get("name") != "404: Floor Not Found":
             checkpoint_count = 3  # 3 checkpoints per level
             checkpoint_spacing = level_def["width"] // (checkpoint_count + 1)
@@ -527,7 +528,8 @@ class Game:
                 self.platforms.add(vertical_platform)
                 self.all_sprites.add(vertical_platform)
         
-        # Create Geometry Dash-style Level 6 (404: Floor Not Found)
+        # Create Geometry Dash-style Level 7 (404: Floor Not Found)
+        # Note: This level was swapped - it's now Level 7, not Level 6
         if self.theme.get("name") == "404: Floor Not Found":
             self._create_geometry_dash_level()
             return  # Skip normal enemy generation for Geometry Dash level
@@ -589,7 +591,7 @@ class Game:
                 self.platforms.add(fire_escape)
                 self.all_sprites.add(fire_escape)
         
-        # Add 2 firewalls with keys for Level 6 (404: Floor Not Found)
+        # Add 2 firewalls with keys for Level 7 (404: Floor Not Found)
         if self.theme.get("name") == "404: Floor Not Found":
             firewall_rng = random.Random(5555 + self.current_level)
             # Create 2 firewalls at strategic positions
