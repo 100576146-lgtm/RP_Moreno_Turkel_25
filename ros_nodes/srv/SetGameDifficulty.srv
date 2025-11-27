@@ -1,0 +1,5 @@
+string difficulty
+---
+bool success
+string message
+

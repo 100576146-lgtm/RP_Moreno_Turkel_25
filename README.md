@@ -144,148 +144,188 @@ RP_Moreno_Turkel_25/
 
 The level is much larger than the screen and the camera will follow you as you progress through it!
 
+---
+
 ## ROS Integration
 
-This game has been integrated with ROS (Robot Operating System) for distributed control and communication.
+This project includes ROS (Robot Operating System) nodes for distributed game control and communication.
 
-### ROS Setup
+### ROS Architecture
 
-The ROS nodes are located in the catkin workspace:
-- **Location**: `~/catkin_ws/src/ros_nodes/`
+The game is controlled through five ROS nodes that communicate via topics:
 
-### Prerequisites
+#### Nodes
 
-1. **ROS Noetic** (or Melodic) installed
-2. **Catkin workspace** built and sourced
+1. **info_user** - Collects player information (name, username, age) from terminal input
+2. **game_node** - Main game logic node with three phases:
+   - Welcome: Receives and displays player information
+   - Game: Processes movement commands and manages gameplay
+   - Final: Calculates and publishes final score
+3. **control_node** - Terminal-based keyboard control (arrow keys)
+4. **control_node_pygame** - Pygame-based keyboard control (arrow keys)
+5. **result_game** - Displays final game results with score and username
 
-### Installation
+#### Topics
 
-```bash
-# Source ROS
-source /opt/ros/noetic/setup.bash
+- **user_information** (`ros_nodes/msg/user_msg`) - Player information (name, username, age)
+- **keyboard_control** (`std_msgs/String`) - Movement commands ("UP", "DOWN", "LEFT", "RIGHT")
+- **result_information** (`std_msgs/Int64`) - Final game score
 
-# Build the catkin workspace
-cd ~/catkin_ws
-catkin_make
+#### Custom Messages
 
-# Source the workspace
-source devel/setup.bash
-```
+- **user_msg** - Contains:
+  - `string name` - Player's name
+  - `string username` - Player's username
+  - `int64 age` - Player's age
 
-### Running with ROS
+#### Services
 
-#### Using the Launcher (Recommended)
+1. **GetUserScore** (`user_score`)
+   - Returns the percentage of the score when it receives the user's name.
+   - Request: `string name`
+   - Response: `float32 score_percentage`
 
-```bash
-source /opt/ros/noetic/setup.bash
-source ~/catkin_ws/devel/setup.bash
+2. **SetGameDifficulty** (`difficulty`)
+   - Changes the difficulty of the game (only in Welcome phase).
+   - Request: `string difficulty` ("easy", "medium", "hard")
+   - Response: `bool success`, `string message`
 
-# Launch all nodes at once
-roslaunch ros_nodes game_launcher.launch
-```
+#### Parameters (game_node)
 
-#### Manual Node Execution
+- `user_name` (string): Stores the user's name.
+- `change_player_color` (int64): Change player color (1: Red, 2: Purple, 3: Blue).
+- `screen_param` (string): Shows the game phase (phase1, phase2, phase3).
 
-1. **Start roscore** (Terminal 1):
+### Prerequisites for ROS
+
+1. **ROS Installation**: 
+   - ROS Noetic (Ubuntu 20.04) or ROS Melodic (Ubuntu 18.04)
+   - Install ROS following the official guide: http://wiki.ros.org/ROS/Installation
+
+2. **ROS Dependencies**:
+   ```bash
+   # For ROS Noetic
+   sudo apt-get install ros-noetic-rospy ros-noetic-std-msgs
+   
+   # For ROS Melodic
+   sudo apt-get install ros-melodic-rospy ros-melodic-std-msgs
+   ```
+
+3. **Python Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Build ROS Package** (if using catkin workspace):
+   ```bash
+   cd ~/catkin_ws/src
+   # Copy or link the ros_nodes directory here
+   cd ~/catkin_ws
+   catkin_make
+   source devel/setup.bash
+   ```
+
+### Running ROS Nodes
+
+#### Option 1: Using ROS Launch (Recommended)
+
+1. **Start ROS Master**:
    ```bash
    roscore
    ```
 
-2. **Start result_game node** (Terminal 2):
+2. **Launch all nodes**:
    ```bash
-   source /opt/ros/noetic/setup.bash
-   source ~/catkin_ws/devel/setup.bash
-   rosrun ros_nodes result_game.py
+   # Launch the complete game
+   roslaunch ros_nodes game.launch
    ```
+   Note: `info_user` and `control_node` will open in separate terminals if possible.
 
-3. **Start ros_game_node** (Terminal 3):
-   ```bash
-   source /opt/ros/noetic/setup.bash
-   source ~/catkin_ws/devel/setup.bash
-   rosrun ros_nodes ros_game_node.py
-   ```
+#### Option 2: Using Python Module Import
 
-4. **Start info_user_gui** (Terminal 4):
-   ```bash
-   source /opt/ros/noetic/setup.bash
-   source ~/catkin_ws/devel/setup.bash
-   rosrun ros_nodes info_user_gui.py
-   ```
-
-5. **Start control_node** (Terminal 5):
-   ```bash
-   source /opt/ros/noetic/setup.bash
-   source ~/catkin_ws/devel/setup.bash
-   rosrun ros_nodes control_node.py
-   ```
-
-### ROS Services
-
-#### GetUserScore Service
-
-Returns the percentage of the score for a given user name.
+If you've built the ROS package in a catkin workspace:
 
 ```bash
-rosservice call /user_score "user_name: 'John'"
+source ~/catkin_ws/devel/setup.bash
+rosrun ros_nodes info_user.py
+rosrun ros_nodes game_node.py
+rosrun ros_nodes control_node.py
+rosrun ros_nodes control_node_pygame.py
+rosrun ros_nodes result_game.py
 ```
 
-- **Request**: `user_name` (string)
-- **Response**: `score_percentage` (float32) - Percentage of maximum score (0-100)
+### Node Communication Flow
 
-#### SetGameDifficulty Service
+1. **info_user** publishes player information → **user_information** topic
+2. **game_node** subscribes to **user_information** → enters Welcome phase
+3. **control_node** or **control_node_pygame** publishes movement → **keyboard_control** topic
+4. **game_node** subscribes to **keyboard_control** → processes movement in Game phase
+5. **game_node** calculates score → publishes to **result_information** topic
+6. **result_game** subscribes to both **user_information** and **result_information** → displays final result
+7. **result_game** calls **user_score** service → gets percentage score
 
-Changes the game level/difficulty. Can only be called during phase1 (start screen).
+### Control Node Usage
 
-```bash
-# Set to level 1
-rosservice call /difficulty "level_number: 1"
+#### control_node (Terminal-based)
+- Use arrow keys to send movement commands
+- Press 'q' to quit
+- Works in terminal without GUI
 
-# Set to level 5
-rosservice call /difficulty "level_number: 5"
+#### control_node_pygame (Pygame-based)
+- Use arrow keys to send movement commands
+- Supports continuous key holding
+- Press ESC to quit
+- Requires pygame (already in requirements.txt)
 
-# Set to level 10
-rosservice call /difficulty "level_number: 10"
+### Logging
+
+All nodes include comprehensive logging:
+- Node initialization messages
+- Phase transitions in game_node
+- Message publishing/receiving events
+- Error handling and shutdown messages
+
+### Troubleshooting
+
+1. **"No module named 'ros_nodes'"**:
+   - Ensure ROS_PACKAGE_PATH includes the project directory
+   - Or build the package in a catkin workspace
+
+2. **"Topic not found"**:
+   - Ensure roscore is running
+   - Check that all nodes are started in the correct order
+
+3. **"Permission denied"**:
+   - Make nodes executable: `chmod +x ros_nodes/*.py`
+
+4. **Control node not responding**:
+   - For control_node: Ensure terminal has focus
+   - For control_node_pygame: Ensure pygame window has focus
+
+### ROS Package Structure
+
+```
+ros_nodes/
+  ├── __init__.py
+  ├── package.xml          # ROS package metadata
+  ├── CMakeLists.txt       # ROS build configuration
+  ├── launch/
+  │   └── game.launch      # Main launch file
+  ├── msg/
+  │   └── user_msg.msg     # Custom message definition
+  ├── srv/
+  │   ├── GetUserScore.srv      # Service definition
+  │   └── SetGameDifficulty.srv # Service definition
+  ├── info_user.py         # User information node
+  ├── game_node.py         # Main game logic node
+  ├── control_node.py      # Terminal keyboard control
+  ├── control_node_pygame.py  # Pygame keyboard control
+  └── result_game.py       # Result display node
 ```
 
-- **Request**: `level_number` (int64) - Level number from 1 to 10 (each number corresponds to a level)
-- **Response**: `success` (bool) - True if changed successfully, False if not in phase1
-- **Response**: `message` (string) - Status message
+### Technical Implementation Details
 
-### ROS Parameters
-
-The `ros_game_node` exposes the following parameters:
-
-- **`~user_name`** (string): Stores the current user's name
-- **`~change_player_color`** (int64): Changes player color
-  - 1: Red
-  - 2: Purple
-  - 3: Blue
-- **`~screen_param`** (string): Shows current game phase
-  - "phase1": Phase 1 - Start screen (can change difficulty here)
-  - "phase2": Phase 2 - Playing phase (game is running)
-  - "phase3": Phase 3 - Game over/final phase
-
-### Checking Parameters
-
-```bash
-# List all parameters
-rosparam list
-
-# Get specific parameter
-rosparam get /ros_game_node/user_name
-rosparam get /ros_game_node/change_player_color
-rosparam get /ros_game_node/screen_param
-
-# Set parameter (example)
-rosparam set /ros_game_node/change_player_color 2  # Change to Purple
-```
-
-### Node-to-Node Communication
-
-- **`info_user_gui`** → Publishes user information to `/user_information` topic
-- **`ros_game_node`** → Subscribes to `/user_information`, publishes score to `/result_information`
-- **`control_node`** → Publishes keyboard commands to `/keyboard_control` topic
-- **`ros_game_node`** → Subscribes to `/keyboard_control` for player movement
-- **`result_game`** → Subscribes to `/result_information`, calls `/user_score` service
-
-For detailed ROS documentation, see `~/catkin_ws/src/ros_nodes/README.md`.
+- **No Global Variables**: All nodes use class-based architecture with encapsulated state
+- **Modular Design**: Each node is self-contained in a separate file
+- **Phase-based Game Logic**: game_node implements phases as separate methods
+- **ROS Message Types**: Uses standard ROS messages and custom user_msg
