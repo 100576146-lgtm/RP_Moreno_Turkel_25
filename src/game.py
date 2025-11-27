@@ -86,7 +86,8 @@ class Game:
         import os
         try:
             # Load 3 mice for entrance screen - FULL SCREEN
-            mice_path = os.path.join(os.path.dirname(__file__), "3mouse.jpeg")
+            game_images_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "game images")
+            mice_path = os.path.join(game_images_dir, "3mouse.jpeg")
             if os.path.exists(mice_path):
                 self.mice_image = pygame.image.load(mice_path)
                 # Scale to full screen size
@@ -95,7 +96,7 @@ class Game:
                 self.mice_image = None
             
             # Load rat for death screen - FULL SCREEN
-            rat_path = os.path.join(os.path.dirname(__file__), "rat.jpeg")
+            rat_path = os.path.join(game_images_dir, "rat.jpeg")
             if os.path.exists(rat_path):
                 self.rat_image = pygame.image.load(rat_path)
                 # Scale to full screen size
@@ -104,7 +105,7 @@ class Game:
                 self.rat_image = None
             
             # Load rat for levels screen (changed from pocketrat) - FULL SCREEN
-            rat_levels_path = os.path.join(os.path.dirname(__file__), "rat.jpeg")
+            rat_levels_path = os.path.join(game_images_dir, "rat.jpeg")
             if os.path.exists(rat_levels_path):
                 self.pocket_rat_image = pygame.image.load(rat_levels_path)
                 # Scale to full screen size
@@ -989,7 +990,7 @@ class Game:
         delattr(self, 'saved_level_state')
     
     def _create_geometry_dash_level(self):
-        """Create a high-speed speedrun level with ground obstacles and wall of death."""
+        """Create a multi-floor level with staircases, requiring both horizontal and vertical movement."""
         level_def = self.levels[self.current_level]
         
         # Clear existing enemies for speedrun level
@@ -1003,102 +1004,172 @@ class Game:
         set_level_dimensions(level_width, level_def["height"])
         self.camera.set_level_dimensions(level_width, level_def["height"])
         
-        # Create solid ground floor for running with reachability checks
-        ground_y = level_def["height"] - 40
-        platforms_list = []
-        for x in range(0, level_width, 200):
-            ground_platform = Platform(x, ground_y, 200, 40, platform_type="ground", theme=self.theme)
-            platforms_list.append(ground_platform)
-            self.platforms.add(ground_platform)
-            self.all_sprites.add(ground_platform)
-        
-        # Verify platform reachability (check if platforms are within jump height)
         from constants import SAFE_JUMP_HEIGHT
-        for i in range(len(platforms_list) - 1):
-            current_plat = platforms_list[i]
-            next_plat = platforms_list[i + 1]
-            vertical_distance = abs(next_plat.rect.y - current_plat.rect.y)
-            horizontal_distance = abs(next_plat.rect.x - (current_plat.rect.x + current_plat.rect.width))
-            
-            # If platform is unreachable, adjust it or add intermediate platform
-            if vertical_distance > SAFE_JUMP_HEIGHT - 20:
-                # Adjust next platform to be reachable
-                if next_plat.rect.y < current_plat.rect.y:
-                    # Platform is above, lower it to be reachable
-                    next_plat.rect.y = current_plat.rect.y - (SAFE_JUMP_HEIGHT - 30)
-        
-        # Add ground-level obstacles (spikes) optimized for high-speed gameplay
-        spike_positions = []
         spawn_safe_zone = 400  # Safe spawn area
         
-        # Create spike patterns that are jumpable at high speed
-        # Rhythm: groups of spikes with consistent gaps
-        spike_x = spawn_safe_zone
-        pattern_index = 0
+        # Define multiple floors at different heights
+        floor_height = 40  # Platform thickness
+        floor_spacing = 180  # Vertical spacing between floors
+        num_floors = 4  # Number of horizontal floors
         
-        # Define spike patterns for variety
-        patterns = [
-            # Pattern 0: Single spike with gap
-            [(0, 0)],
-            # Pattern 1: Double spike with gap
-            [(0, 0), (60, 0)],
-            # Pattern 2: Triple spike with gap
-            [(0, 0), (60, 0), (120, 0)],
-            # Pattern 3: Wide double with gap
-            [(0, 0), (100, 0)],
-        ]
+        # Calculate floor Y positions (from bottom to top)
+        ground_y = level_def["height"] - floor_height
+        floor_ys = []
+        for i in range(num_floors):
+            floor_y = ground_y - (i * floor_spacing)
+            floor_ys.append(floor_y)
         
-        while spike_x < level_width - 200:
-            # Select pattern
-            pattern = patterns[pattern_index % len(patterns)]
+        # Create horizontal floor platforms for each floor
+        platforms_list = []
+        for floor_y in floor_ys:
+            floor_platforms = []
+            # Create continuous floor segments
+            for x in range(0, level_width, 200):
+                floor_platform = Platform(x, floor_y, 200, floor_height, platform_type="ground", theme=self.theme)
+                floor_platforms.append(floor_platform)
+                self.platforms.add(floor_platform)
+                self.all_sprites.add(floor_platform)
+            platforms_list.append(floor_platforms)
+        
+        # Create staircases connecting floors
+        # Staircases are diagonal platforms that allow vertical movement
+        staircase_rng = random.Random(6006 + self.current_level)
+        staircase_spacing = 1200  # Distance between staircases
+        staircase_width = 40  # Width of each step
+        step_height = 30  # Height of each step
+        steps_per_staircase = 6  # Number of steps in each staircase
+        
+        staircases = []
+        for x in range(spawn_safe_zone + 500, level_width - 800, staircase_spacing):
+            # Randomly choose which floors to connect
+            start_floor = staircase_rng.randint(0, num_floors - 2)
+            end_floor = start_floor + 1  # Always go up one floor
             
-            # Place spikes according to pattern
-            for offset_x, offset_y in pattern:
-                if spike_x + offset_x < level_width - 100:
-                    spike_y = ground_y - 30 + offset_y  # Spikes on ground
-                    spike_positions.append((spike_x + offset_x, spike_y))
+            start_y = floor_ys[start_floor]
+            end_y = floor_ys[end_floor]
             
-            # Gap between patterns (200-250 pixels for high-speed jumping)
-            gap_size = 200 + (spike_x // 1000) % 50
-            spike_x += max([p[0] for p in pattern]) + 60 + gap_size
-            pattern_index += 1
+            # Create diagonal staircase
+            for step in range(steps_per_staircase):
+                step_x = x + (step * (staircase_width + 10))
+                step_y = start_y - (step * step_height)
+                
+                # Make sure we don't go beyond the end floor
+                if step_y <= end_y:
+                    step_y = end_y
+                
+                step_platform = Platform(step_x, step_y, staircase_width, floor_height, 
+                                       platform_type="ground", theme=self.theme)
+                self.platforms.add(step_platform)
+                self.all_sprites.add(step_platform)
+                staircases.append((step_x, step_y))
+            
+            # Also create reverse staircases (going down) occasionally
+            if staircase_rng.random() < 0.4 and start_floor > 0:
+                start_y = floor_ys[start_floor]
+                end_y = floor_ys[start_floor - 1]
+                
+                for step in range(steps_per_staircase):
+                    step_x = x + 400 + (step * (staircase_width + 10))
+                    step_y = start_y + (step * step_height)
+                    
+                    if step_y >= end_y:
+                        step_y = end_y
+                    
+                    step_platform = Platform(step_x, step_y, staircase_width, floor_height,
+                                           platform_type="ground", theme=self.theme)
+                    self.platforms.add(step_platform)
+                    self.all_sprites.add(step_platform)
         
-        # Create spike obstacles
+        # Add spikes on both floor and ceiling of each floor
+        spike_positions = []
+        spike_rng = random.Random(7007 + self.current_level)
+        
+        # Floor spikes (on top of each floor)
+        for floor_y in floor_ys:
+            spike_x = spawn_safe_zone
+            pattern_index = 0
+            
+            # More varied spike patterns
+            patterns = [
+                [(0, 0)],  # Single
+                [(0, 0), (60, 0)],  # Double
+                [(0, 0), (60, 0), (120, 0)],  # Triple
+                [(0, 0), (100, 0)],  # Wide double
+                [(0, 0), (40, 0), (80, 0), (120, 0)],  # Quad
+            ]
+            
+            while spike_x < level_width - 200:
+                pattern = patterns[pattern_index % len(patterns)]
+                
+                for offset_x, offset_y in pattern:
+                    if spike_x + offset_x < level_width - 100:
+                        spike_y = floor_y - 30 + offset_y  # Spikes on floor
+                        spike_positions.append((spike_x + offset_x, spike_y))
+                
+                gap_size = 180 + spike_rng.randint(0, 80)
+                spike_x += max([p[0] for p in pattern]) + 60 + gap_size
+                pattern_index += 1
+        
+        # Ceiling spikes (hanging from top of each floor)
+        # Spikes are 24 pixels tall with point at y=4, so position at ceiling_y - 4 to hang down
+        for i, floor_y in enumerate(floor_ys):
+            if i < num_floors - 1:  # Don't add ceiling spikes to top floor
+                ceiling_y = floor_y - floor_spacing  # Position above this floor (bottom of ceiling)
+                spike_x = spawn_safe_zone + 300
+                
+                while spike_x < level_width - 200:
+                    # Place ceiling spikes in clusters
+                    cluster_size = spike_rng.randint(2, 5)
+                    for j in range(cluster_size):
+                        if spike_x + (j * 50) < level_width - 100:
+                            # Position so spike point is at ceiling_y (hanging down)
+                            spike_positions.append((spike_x + (j * 50), ceiling_y - 4))
+                    
+                    gap_size = 200 + spike_rng.randint(0, 150)
+                    spike_x += (cluster_size * 50) + gap_size
+        
+        # Create all spike obstacles
         for x, y in spike_positions:
             spike_obstacle = Obstacle(x, y, "spike")
             self.obstacles.add(spike_obstacle)
             self.all_sprites.add(spike_obstacle)
         
-        # Add enemies for additional challenge
-        enemy_rng = random.Random(6000 + self.current_level)
-        enemy_count = 15  # Moderate number of enemies for level 6
+        # Add more enemies distributed across all floors
+        enemy_rng = random.Random(8008 + self.current_level)
+        enemy_count = 35  # Increased from 15 to 35
+        
         for i in range(enemy_count):
-            # Place enemies throughout the level
+            # Distribute enemies across all floors
+            floor_index = enemy_rng.randint(0, num_floors - 1)
+            floor_y = floor_ys[floor_index]
+            
             x = enemy_rng.randint(spawn_safe_zone + 200, level_width - 300)
-            y = ground_y - 50  # Slightly above ground
-            enemy_type = enemy_rng.choice(["basic", "fast", "jumper"])
+            y = floor_y - 50  # Slightly above the floor
+            
+            # Vary enemy types
+            enemy_type = enemy_rng.choice(["basic", "fast", "jumper", "big"])
             enemy = Enemy(x, y, enemy_type, theme=self.theme)
             self.enemies.add(enemy)
             self.all_sprites.add(enemy)
         
         # Store level properties for speedrun mechanics
         self.geometry_dash_mode = True
-        self.spike_wall_x = 0  # Starting position of wall of death
-        self.spike_wall_speed = 2.4  # Doubled speed for more intense challenge (was 1.2)
-        self.player_speed_multiplier = 0.6  # Reduced by 70% (30% of 2.0)
-        self.countdown_timer = 180  # 3 seconds countdown at 60 FPS
-        self.countdown_active = True  # Countdown active initially
+        self.spike_wall_x = 0
+        self.spike_wall_speed = 2.4
+        self.player_speed_multiplier = 0.6
+        self.countdown_timer = 180
+        self.countdown_active = True
         
         # Warning sign at spawn
         self.run_sign_x = 350
-        self.run_sign_y = ground_y - 100
+        self.run_sign_y = floor_ys[0] - 100
         self.computer_warning_text = "RUN!"
         
-        # Spawn position on ground
+        # Spawn position on bottom floor
         self.geometry_dash_spawn_x = 150
-        self.geometry_dash_spawn_y = ground_y - 60  # On ground (60 is player height)
+        self.geometry_dash_spawn_y = floor_ys[0] - 60  # On bottom floor
         
-        print(f"Speedrun Level 6 created: {level_width} pixels wide, wall of death at {self.spike_wall_speed}x speed!")
+        print(f"Multi-floor Level 6 created: {level_width} pixels wide, {num_floors} floors, {enemy_count} enemies, wall of death at {self.spike_wall_speed}x speed!")
     
     def _create_underwater_maze(self):
         """Create an underwater scrolling level (Level 9: Kraken Me Up)."""

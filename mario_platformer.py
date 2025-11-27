@@ -1384,5 +1384,8 @@ class Game:
 
 if __name__ == "__main__":
     # Delegate to modular entry point
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
     from game import run_game
     run_game()

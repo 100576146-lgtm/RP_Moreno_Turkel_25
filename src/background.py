@@ -52,7 +52,8 @@ class Background:
             else:
                 return None
         
-        bg_path = os.path.join(os.path.dirname(__file__), bg_file)
+        game_images_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "game images")
+        bg_path = os.path.join(game_images_dir, bg_file)
         
         if cache_key in self._custom_bg_images:
             return self._custom_bg_images[cache_key]

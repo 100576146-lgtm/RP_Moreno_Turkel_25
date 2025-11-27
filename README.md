@@ -67,16 +67,25 @@ Alternatively, you can run the file directly by launching `mario_platformer.py` 
 
 ```
 RP_Moreno_Turkel_25/
-  game.py                # Main game (full-featured) entry and loop
   mario_platformer.py    # Simple entry point to run the game
-  entities.py            # Player, Enemy, Platform, Powerup, Obstacle, etc.
-  background.py          # Gradient skies and themed backgrounds
-  camera.py              # Camera tracking and level bounds
-  audio.py               # Audio helpers (pygame mixer)
-  constants.py           # Shared constants: physics, colors, dimensions
-  levels.py              # Level loading helpers
+  src/                   # All Python source files
+    game.py              # Main game (full-featured) entry and loop
+    entities.py          # Player, Enemy, Platform, Powerup, Obstacle, etc.
+    background.py        # Gradient skies and themed backgrounds
+    camera.py            # Camera tracking and level bounds
+    audio.py             # Audio helpers (pygame mixer)
+    constants.py         # Shared constants: physics, colors, dimensions
+    levels.py            # Level loading helpers
+    ui.py                # UI components
+    sprite_animator.py   # Sprite animation management
+    sprite_analyzer.py   # Sprite sheet analysis and cropping
+    smart_level_generator.py  # Level generation utilities
   level_defs/            # Per-level definitions (width/height/theme)
-  sprites_sheet_*/       # Sprite sheets and cropped frames
+    level_01.py through level_10.py
+  game images/           # All image assets
+    *.jpeg, *.png        # Background and character images
+    sprites_sheet_1/      # Cropped sprite frames
+    Sprites.png          # Main sprite sheet
   requirements.txt       # Python dependencies
   README.md              # This file
 ```
@@ -134,3 +143,149 @@ RP_Moreno_Turkel_25/
 - **Progressive Gameplay**: Difficulty increases every 1000 points with more enemies
 
 The level is much larger than the screen and the camera will follow you as you progress through it!
+
+## ROS Integration
+
+This game has been integrated with ROS (Robot Operating System) for distributed control and communication.
+
+### ROS Setup
+
+The ROS nodes are located in the catkin workspace:
+- **Location**: `~/catkin_ws/src/ros_nodes/`
+
+### Prerequisites
+
+1. **ROS Noetic** (or Melodic) installed
+2. **Catkin workspace** built and sourced
+
+### Installation
+
+```bash
+# Source ROS
+source /opt/ros/noetic/setup.bash
+
+# Build the catkin workspace
+cd ~/catkin_ws
+catkin_make
+
+# Source the workspace
+source devel/setup.bash
+```
+
+### Running with ROS
+
+#### Using the Launcher (Recommended)
+
+```bash
+source /opt/ros/noetic/setup.bash
+source ~/catkin_ws/devel/setup.bash
+
+# Launch all nodes at once
+roslaunch ros_nodes game_launcher.launch
+```
+
+#### Manual Node Execution
+
+1. **Start roscore** (Terminal 1):
+   ```bash
+   roscore
+   ```
+
+2. **Start result_game node** (Terminal 2):
+   ```bash
+   source /opt/ros/noetic/setup.bash
+   source ~/catkin_ws/devel/setup.bash
+   rosrun ros_nodes result_game.py
+   ```
+
+3. **Start ros_game_node** (Terminal 3):
+   ```bash
+   source /opt/ros/noetic/setup.bash
+   source ~/catkin_ws/devel/setup.bash
+   rosrun ros_nodes ros_game_node.py
+   ```
+
+4. **Start info_user_gui** (Terminal 4):
+   ```bash
+   source /opt/ros/noetic/setup.bash
+   source ~/catkin_ws/devel/setup.bash
+   rosrun ros_nodes info_user_gui.py
+   ```
+
+5. **Start control_node** (Terminal 5):
+   ```bash
+   source /opt/ros/noetic/setup.bash
+   source ~/catkin_ws/devel/setup.bash
+   rosrun ros_nodes control_node.py
+   ```
+
+### ROS Services
+
+#### GetUserScore Service
+
+Returns the percentage of the score for a given user name.
+
+```bash
+rosservice call /user_score "user_name: 'John'"
+```
+
+- **Request**: `user_name` (string)
+- **Response**: `score_percentage` (float32) - Percentage of maximum score (0-100)
+
+#### SetGameDifficulty Service
+
+Changes the game level/difficulty. Can only be called during phase1 (start screen).
+
+```bash
+# Set to level 1
+rosservice call /difficulty "level_number: 1"
+
+# Set to level 5
+rosservice call /difficulty "level_number: 5"
+
+# Set to level 10
+rosservice call /difficulty "level_number: 10"
+```
+
+- **Request**: `level_number` (int64) - Level number from 1 to 10 (each number corresponds to a level)
+- **Response**: `success` (bool) - True if changed successfully, False if not in phase1
+- **Response**: `message` (string) - Status message
+
+### ROS Parameters
+
+The `ros_game_node` exposes the following parameters:
+
+- **`~user_name`** (string): Stores the current user's name
+- **`~change_player_color`** (int64): Changes player color
+  - 1: Red
+  - 2: Purple
+  - 3: Blue
+- **`~screen_param`** (string): Shows current game phase
+  - "phase1": Phase 1 - Start screen (can change difficulty here)
+  - "phase2": Phase 2 - Playing phase (game is running)
+  - "phase3": Phase 3 - Game over/final phase
+
+### Checking Parameters
+
+```bash
+# List all parameters
+rosparam list
+
+# Get specific parameter
+rosparam get /ros_game_node/user_name
+rosparam get /ros_game_node/change_player_color
+rosparam get /ros_game_node/screen_param
+
+# Set parameter (example)
+rosparam set /ros_game_node/change_player_color 2  # Change to Purple
+```
+
+### Node-to-Node Communication
+
+- **`info_user_gui`** → Publishes user information to `/user_information` topic
+- **`ros_game_node`** → Subscribes to `/user_information`, publishes score to `/result_information`
+- **`control_node`** → Publishes keyboard commands to `/keyboard_control` topic
+- **`ros_game_node`** → Subscribes to `/keyboard_control` for player movement
+- **`result_game`** → Subscribes to `/result_information`, calls `/user_score` service
+
+For detailed ROS documentation, see `~/catkin_ws/src/ros_nodes/README.md`.

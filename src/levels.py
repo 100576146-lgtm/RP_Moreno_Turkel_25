@@ -119,13 +119,16 @@ def load_levels() -> List[Dict[str, Any]]:
     Each file must define LEVEL_DEF dict with keys: width,height,difficulty,theme.
     Falls back to generate_levels() if directory or modules are missing.
     """
-    root = os.path.dirname(os.path.abspath(__file__))
-    defs_dir = os.path.join(root, "level_defs")
+    # Source files now live under src/, but level definitions remain at the repo root,
+    # so we need to walk up one directory before looking for level_defs.
+    src_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(src_dir)
+    defs_dir = os.path.join(repo_root, "level_defs")
     if not os.path.isdir(defs_dir):
         return generate_levels()
     # Ensure package path
-    if root not in sys.path:
-        sys.path.append(root)
+    if repo_root not in sys.path:
+        sys.path.append(repo_root)
     package_name = "level_defs"
     try:
         importlib.import_module(package_name)

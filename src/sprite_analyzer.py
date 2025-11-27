@@ -32,8 +32,12 @@ def analyze_sprite_sheet(image_path):
         print(f"Error loading {image_path}: {e}")
         return None, 0, 0
 
-def crop_sprites(image, cols, rows, output_dir="sprites"):
+def crop_sprites(image, cols, rows, output_dir=None):
     """Crop sprites from a sprite sheet."""
+    if output_dir is None:
+        # Default to game images directory
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        output_dir = os.path.join(base_dir, "game images", "sprites_sheet_1")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
@@ -67,11 +71,14 @@ def crop_sprites(image, cols, rows, output_dir="sprites"):
 def main():
     pygame.init()
     
-    # Find sprite sheets
+    # Find sprite sheets in game images directory
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    game_images_dir = os.path.join(base_dir, "game images")
     sprite_sheets = []
-    for filename in os.listdir("."):
-        if (filename.startswith("Gemini_Generated_Image_") and filename.endswith(".png")) or filename == "Sprites.png":
-            sprite_sheets.append(filename)
+    if os.path.exists(game_images_dir):
+        for filename in os.listdir(game_images_dir):
+            if (filename.startswith("Gemini_Generated_Image_") and filename.endswith(".png")) or filename == "Sprites.png":
+                sprite_sheets.append(os.path.join(game_images_dir, filename))
     
     if not sprite_sheets:
         print("No sprite sheets found!")
@@ -97,19 +104,22 @@ def main():
         # Try 4x4 first (common for character animations)
         if width % 4 == 0 and height % 4 == 0:
             print("\nTrying 4x4 grid:")
-            sprites = crop_sprites(image, 4, 4, f"sprites_sheet_{i+1}")
+            output_dir = os.path.join(game_images_dir, f"sprites_sheet_{i+1}")
+            sprites = crop_sprites(image, 4, 4, output_dir)
             print(f"Created {len(sprites)} sprites")
         
         # Try 6x4 (common for more complex animations)
         if width % 6 == 0 and height % 4 == 0:
             print("\nTrying 6x4 grid:")
-            sprites = crop_sprites(image, 6, 4, f"sprites_sheet_{i+1}_6x4")
+            output_dir = os.path.join(game_images_dir, f"sprites_sheet_{i+1}_6x4")
+            sprites = crop_sprites(image, 6, 4, output_dir)
             print(f"Created {len(sprites)} sprites")
         
         # Try 8x4 (for very detailed animations)
         if width % 8 == 0 and height % 4 == 0:
             print("\nTrying 8x4 grid:")
-            sprites = crop_sprites(image, 8, 4, f"sprites_sheet_{i+1}_8x4")
+            output_dir = os.path.join(game_images_dir, f"sprites_sheet_{i+1}_8x4")
+            sprites = crop_sprites(image, 8, 4, output_dir)
             print(f"Created {len(sprites)} sprites")
 
 if __name__ == "__main__":

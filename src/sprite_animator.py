@@ -38,6 +38,8 @@ class SpriteAnimator:
     
     def load_sprite_sheets(self):
         """Load sprites from the cropped sprite directories."""
+        # Look for sprite directories in game images folder
+        game_images_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "game images")
         # Try different grid sizes to find the best organization
         sprite_dirs = [
             "sprites_sheet_1",      # 4x4 grid
@@ -46,9 +48,10 @@ class SpriteAnimator:
         ]
         
         for dir_name in sprite_dirs:
-            if os.path.exists(dir_name):
-                print(f"Loading sprites from {dir_name}")
-                sprites = self.load_sprites_from_dir(dir_name)
+            dir_path = os.path.join(game_images_dir, dir_name)
+            if os.path.exists(dir_path):
+                print(f"Loading sprites from {dir_path}")
+                sprites = self.load_sprites_from_dir(dir_path)
                 if sprites:
                     self.sprites[dir_name] = sprites
                     print(f"  Loaded {len(sprites)} sprites")

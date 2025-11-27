@@ -234,9 +234,6 @@ class Player(pygame.sprite.Sprite):
         self.on_ground = False
         collisions = pygame.sprite.spritecollide(self, platforms, False)
         for platform in collisions:
-            # Skip collision with space rocks (visual only)
-            if hasattr(platform, 'platform_type') and platform.platform_type in ["space_rock"]:
-                continue
             # Spiky platforms kill the player on contact
             if hasattr(platform, 'platform_type') and platform.platform_type == "spiky_platform":
                 return "hit"  # Player dies when touching spiky platform
@@ -1138,6 +1135,10 @@ class Platform(pygame.sprite.Sprite):
     
     def draw_space_rock(self, width, height):
         """Draw a large space rock for Level 5."""
+        # Use seeded random generator based on platform position for consistent texture
+        seed = hash((self.rect.x, self.rect.y, width, height)) % (2**32)
+        rng = random.Random(seed)
+        
         # Rock base (dark grey/black space rock)
         self.image.fill(DARK_GREY)
         pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
@@ -1145,19 +1146,19 @@ class Platform(pygame.sprite.Sprite):
         # Space rock texture with craters
         for x in range(0, width, 12):
             for y in range(0, height, 8):
-                if random.random() < 0.4:
+                if rng.random() < 0.4:
                     # Rock texture
-                    pygame.draw.circle(self.image, (40, 40, 40), (x + 6, y + 4), random.randint(1, 3))
-                elif random.random() < 0.15:
+                    pygame.draw.circle(self.image, (40, 40, 40), (x + 6, y + 4), rng.randint(1, 3))
+                elif rng.random() < 0.15:
                     # Craters
-                    crater_size = random.randint(3, 6)
+                    crater_size = rng.randint(3, 6)
                     pygame.draw.circle(self.image, BLACK, (x + 6, y + 4), crater_size)
                     pygame.draw.circle(self.image, (20, 20, 20), (x + 6, y + 4), crater_size-1)
         
         # Space weathering effects
         for x in range(0, width, 8):
             for y in range(0, height, 6):
-                if random.random() < 0.1:
+                if rng.random() < 0.1:
                     # Glowing mineral deposits
                     pygame.draw.circle(self.image, (100, 100, 150), (x + 4, y + 3), 1)
         

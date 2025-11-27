@@ -1,15 +1,13 @@
 import constants as const
 
 LEVEL_DEF = {
-    "width": 10400,
+    "width": 11200,
     "height": 600,
     "difficulty": 5,
     "theme": {
-        "name": "404: Floor Not Found",
-        "sky_top": const.BLACK,
-        "sky_bottom": const.BLACK,
-        "bg_motif": "glow"
+        "name": "Pasta La Vista",
+        "sky_top": const.PARMESAN_YELLOW,
+        "sky_bottom": const.MARINARA_RED,
+        "bg_motif": "sand"
     }
 }
-
-
