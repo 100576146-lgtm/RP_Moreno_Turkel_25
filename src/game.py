@@ -159,6 +159,38 @@ class Game:
         self.theme = level_def["theme"]
         self.bg.set_theme(self.theme)
         
+        # Special underwater maze level - completely different mechanics - handle early
+        if self.theme.get("name") == "Kraken Me Up":
+            # Set underwater mode
+            self.underwater_mode = True
+            self.bubble_wall_mode = False
+            self.bubble_wall_x = 0
+            self.bubble_wall_speed = 0
+            self.bubble_wall_countdown_timer = 0
+            self.bubble_wall_countdown_active = False
+            # Reset Geometry Dash mode
+            self.geometry_dash_mode = False
+            self.player_speed_multiplier = 1.0
+            self.countdown_active = False
+            # Update camera with new level dimensions
+            self.camera.set_level_dimensions(level_def["width"], level_def["height"])
+            # Create the underwater maze level
+            self._create_underwater_maze_v2()
+            return  # Skip normal level generation
+        
+        # Special tetris level - completely different mechanics - handle early
+        if self.theme.get("name") == "Tetris Terror":
+            # Reset modes
+            self.underwater_mode = False
+            self.geometry_dash_mode = False
+            self.player_speed_multiplier = 1.0
+            self.countdown_active = False
+            # Update camera with new level dimensions
+            self.camera.set_level_dimensions(level_def["width"], level_def["height"])
+            # Create the tetris level
+            self._create_tetris_level()
+            return  # Skip normal level generation
+        
         # Reset Geometry Dash mode for non-Geometry Dash levels
         # Note: "404: Floor Not Found" is now Level 7 (was Level 6)
         if not (self.theme.get("name") == "404: Floor Not Found"):
@@ -167,13 +199,12 @@ class Game:
             self.countdown_active = False
         
         # Reset underwater mode and bubble wall mode for non-underwater levels
-        if not (self.theme.get("name") == "Kraken Me Up"):
-            self.underwater_mode = False
-            self.bubble_wall_mode = False
-            self.bubble_wall_x = 0
-            self.bubble_wall_speed = 0
-            self.bubble_wall_countdown_timer = 0
-            self.bubble_wall_countdown_active = False
+        self.underwater_mode = False
+        self.bubble_wall_mode = False
+        self.bubble_wall_x = 0
+        self.bubble_wall_speed = 0
+        self.bubble_wall_countdown_timer = 0
+        self.bubble_wall_countdown_active = False
         
         # Update camera with new level dimensions
         self.camera.set_level_dimensions(level_def["width"], level_def["height"])
@@ -274,12 +305,7 @@ class Game:
         # Make pasta level very hard with lots of ground enemies
         elif self.theme.get("name") == "Pasta La Vista":
             enemy_count = (enemy_count + 12) * 2  # Multiply by 2 (reduced from 4)
-        # Level 8 (Concrete Jungle) was removed
-        # Special underwater maze level - completely different mechanics
-        elif self.theme.get("name") == "Kraken Me Up":
-            # This level has completely different mechanics - handled separately
-            self._create_underwater_maze_v2()
-            return  # Skip normal level generation
+        # Level 8 (Kraken Me Up) is handled early in create_level() - skip here
         # Ultimate challenge level - Neon Night
         elif self.theme.get("name") == "Neon Night":
             enemy_count += 20  # Maximum enemies for ultimate challenge
@@ -1783,15 +1809,13 @@ class Game:
             self.platforms.add(moving_platform)
             self.all_sprites.add(moving_platform)
         
-        # Add spinning laser obstacles (windmill-like, large)
+        # Add red static laser obstacles (no spinning) for Level 8
         laser_count = 8 + level_def["difficulty"]
         for _ in range(laser_count):
             x = maze_rng.randint(spawn_safe_zone + 300, width - 300)
             y = maze_rng.randint(150, height - 200)
-            # Create spinning laser obstacle
+            # Create static red laser obstacle (no rotation)
             laser = Obstacle(x, y, "spinning_laser")
-            laser.rotation_angle = maze_rng.random() * 6.28  # Random starting rotation
-            laser.rotation_speed = 0.05 + maze_rng.random() * 0.03  # Variable rotation speed
             laser.rect.center = (x, y)  # Center on position (already set in __init__, but ensure it's correct)
             laser.draw_obstacle()  # Draw initial state
             self.obstacles.add(laser)
@@ -1875,6 +1899,142 @@ class Game:
         self.camera.y = 0
         
         print(f"Underwater maze created: {width}x{height}, {enemies_placed} swimming enemies, {laser_count} spinning lasers, {len(self.platforms)} total platforms!")
+    
+    def _create_tetris_level(self):
+        """Create a tetris-themed level with tetris wall of death, falling blocks, and tetris-colored platforms."""
+        import random
+        import math
+        level_def = self.levels[self.current_level]
+        width = level_def["width"]
+        height = level_def["height"]
+        
+        # Use level dimensions
+        set_level_dimensions(width, height)
+        self.camera.set_level_dimensions(width, height)
+        
+        # Clear existing sprites
+        self.all_sprites.empty()
+        self.platforms.empty()
+        self.enemies.empty()
+        self.powerups.empty()
+        self.star_powerups.empty()
+        self.plants.empty()
+        self.obstacles.empty()
+        self.checkpoints.empty()
+        self.keys.empty()
+        self.npcs.empty()
+        self.big_coins.empty()
+        
+        from constants import PLAYER_SPEED, SAFE_JUMP_HEIGHT
+        tetris_rng = random.Random(9999 + self.current_level)
+        spawn_safe_zone = 400
+        
+        # Tetris colors for platforms
+        tetris_colors = [
+            (255, 0, 0),    # Red (I-piece)
+            (0, 255, 0),    # Green (S-piece)
+            (0, 0, 255),    # Blue (J-piece)
+            (255, 255, 0),  # Yellow (O-piece)
+            (255, 0, 255),  # Magenta (T-piece)
+            (0, 255, 255),  # Cyan (Z-piece)
+            (255, 165, 0),  # Orange (L-piece)
+        ]
+        
+        # Create lots of tetris-colored platforms
+        # Use smart level generator for accessible platforms
+        generator = SmartLevelGenerator(width, height, level_def["difficulty"])
+        platform_data = generator.generate_accessible_platforms()
+        
+        # Validate accessibility and add fixes if needed
+        is_accessible = generator.validate_platform_accessibility()
+        if not is_accessible:
+            print(f"Level {self.current_level + 1}: Adding accessibility fixes...")
+            generator.add_accessibility_fixes()
+            generator.validate_platform_accessibility()
+        
+        # Get updated platform data after fixes
+        platform_data = generator.platforms
+        
+        # Create platforms from generated data - all tetris-colored
+        for platform_info in platform_data:
+            # Choose random tetris color for each platform
+            tetris_color = tetris_rng.choice(tetris_colors)
+            platform = Platform(
+                platform_info['x'], platform_info['y'], 
+                platform_info['width'], platform_info['height'],
+                platform_type=platform_info['type'], 
+                theme=self.theme
+            )
+            # Mark platform as tetris-colored
+            platform.tetris_color = tetris_color
+            platform.is_tetris_platform = True
+            self.platforms.add(platform)
+            self.all_sprites.add(platform)
+        
+        # Add additional floating platforms for more interaction
+        extra_platform_count = 30 + level_def["difficulty"] * 5
+        for _ in range(extra_platform_count):
+            x = tetris_rng.randint(spawn_safe_zone + 200, width - 400)
+            y = tetris_rng.randint(100, height - 200)
+            platform_width = tetris_rng.randint(120, 200)
+            platform_height = 30
+            tetris_color = tetris_rng.choice(tetris_colors)
+            
+            platform = Platform(x, y, platform_width, platform_height, platform_type="normal", theme=self.theme)
+            platform.tetris_color = tetris_color
+            platform.is_tetris_platform = True
+            self.platforms.add(platform)
+            self.all_sprites.add(platform)
+        
+        # Add falling tetris blocks from the sky
+        falling_tetris_count = 20 + level_def["difficulty"] * 5
+        for _ in range(falling_tetris_count):
+            x = tetris_rng.randint(100, width - 100)
+            y = tetris_rng.randint(-400, -50)  # Start above screen
+            # Create falling tetris piece
+            falling_tetris = Obstacle(x, y, "falling_tetris")
+            falling_tetris.falling = True
+            falling_tetris.fall_speed = 3.0 + tetris_rng.random() * 2.0
+            falling_tetris.level_width = width  # Store level width for respawning
+            self.obstacles.add(falling_tetris)
+            self.all_sprites.add(falling_tetris)
+        
+        # Create evil tetris block enemies
+        enemy_count = 15 + level_def["difficulty"] * 3
+        for _ in range(enemy_count):
+            x = tetris_rng.randint(spawn_safe_zone + 200, width - 300)
+            y = tetris_rng.randint(150, height - 150)
+            # Create tetris block enemy
+            enemy = Enemy(x, y, "tetris_block", theme=self.theme)
+            self.enemies.add(enemy)
+            self.all_sprites.add(enemy)
+        
+        # Add checkpoints
+        checkpoint_count = 3
+        checkpoint_spacing = width // (checkpoint_count + 1)
+        for i in range(1, checkpoint_count + 1):
+            checkpoint_x = checkpoint_spacing * i
+            checkpoint_y = height - 140
+            checkpoint = Checkpoint(checkpoint_x, checkpoint_y, theme=self.theme)
+            self.checkpoints.add(checkpoint)
+            self.all_sprites.add(checkpoint)
+        
+        # Initialize tetris wall of death
+        self.tetris_wall_mode = True
+        self.tetris_wall_x = 0
+        self.tetris_wall_speed = PLAYER_SPEED * 0.75  # Wall moves at 0.75x player speed
+        self.tetris_wall_countdown_timer = 240  # 4 second countdown (60 FPS * 4)
+        self.tetris_wall_countdown_active = True
+        
+        # Safe spawn position
+        self.geometry_dash_spawn_x = spawn_safe_zone
+        self.geometry_dash_spawn_y = height - 100
+        
+        # Reset camera
+        self.camera.x = 0
+        self.camera.y = 0
+        
+        print(f"Tetris level created: {width}x{height}, {enemy_count} tetris enemies, {falling_tetris_count} falling blocks, {len(self.platforms)} tetris platforms!")
     
     def _create_underwater_maze(self):
         """Create an underwater scrolling level (Level 8: Kraken Me Up, was Level 9)."""
@@ -2407,6 +2567,28 @@ class Game:
                 else:
                     # During countdown, normal player movement
                     result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
+            elif hasattr(self, 'tetris_wall_mode') and self.tetris_wall_mode:
+                # Tetris wall of death mechanics (Level 9)
+                if hasattr(self, 'tetris_wall_countdown_active') and self.tetris_wall_countdown_active:
+                    self.tetris_wall_countdown_timer -= 1
+                    if self.tetris_wall_countdown_timer <= 0:
+                        self.tetris_wall_countdown_active = False
+                        print("COUNTDOWN OVER! Tetris wall is now moving!")
+                
+                # Only move tetris wall after countdown is over
+                if hasattr(self, 'tetris_wall_countdown_active') and not self.tetris_wall_countdown_active:
+                    # Move tetris wall closer to player
+                    self.tetris_wall_x += self.tetris_wall_speed
+                    
+                    # Check if tetris wall caught up to player
+                    if self.tetris_wall_x >= self.player.rect.x - 50:
+                        # Player is caught by tetris wall - death
+                        result = "hit"
+                    else:
+                        result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
+                else:
+                    # During countdown, normal player movement
+                    result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
             else:
                 result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
             
@@ -2734,7 +2916,7 @@ class Game:
                 frames_remaining = self.bubble_wall_countdown_timer % 60
                 
                 # Dramatic pulsing effect - larger and brighter as countdown approaches 0
-                pulse_factor = 1.0 + 0.3 * abs(pygame.math.sin(frames_remaining * 0.2))
+                pulse_factor = 1.0 + 0.3 * abs(math.sin(frames_remaining * 0.2))
                 if countdown_seconds <= 3:
                     size_multiplier = 1.0 + (0.5 * (4 - countdown_seconds) / 3)  # Gets bigger: 1.5x at 1, 1.33x at 2, 1.17x at 3
                 else:
@@ -2844,6 +3026,122 @@ class Game:
                     warning_text = "!!!"
                     warning_surface = warning_font.render(warning_text, True, (255, 255, 255))
                     warning_rect = warning_surface.get_rect(center=(bubble_wall_screen_x + 30, self.screen_height // 2))
+                    self.screen.blit(warning_surface, warning_rect)
+        
+        # Draw Tetris wall of death for Level 9
+        elif hasattr(self, 'tetris_wall_mode') and self.tetris_wall_mode:
+            # Draw dramatic countdown timer
+            if hasattr(self, 'tetris_wall_countdown_active') and self.tetris_wall_countdown_active:
+                countdown_seconds = max(1, ((self.tetris_wall_countdown_timer - 1) // 60) + 1)
+                frames_remaining = self.tetris_wall_countdown_timer % 60
+                
+                # Dramatic pulsing effect
+                pulse_factor = 1.0 + 0.3 * abs(math.sin(frames_remaining * 0.2))
+                if countdown_seconds <= 3:
+                    size_multiplier = 1.0 + (0.5 * (4 - countdown_seconds) / 3)
+                else:
+                    size_multiplier = 1.0
+                
+                # Dark overlay with tetris colors
+                overlay = pygame.Surface((self.screen_width, self.screen_height))
+                overlay_alpha = 180 if countdown_seconds <= 3 else 120
+                overlay.set_alpha(overlay_alpha)
+                overlay.fill((50, 0, 100))  # Purple tint for tetris theme
+                self.screen.blit(overlay, (0, 0))
+                
+                # Large dramatic countdown box with pulsing effect
+                box_size = int(300 * size_multiplier * pulse_factor)
+                countdown_rect = pygame.Rect(
+                    self.screen_width // 2 - box_size // 2,
+                    self.screen_height // 2 - box_size // 2,
+                    box_size,
+                    box_size
+                )
+                border_color_intensity = min(255, 100 + (countdown_seconds <= 3) * 155)
+                border_width = 8 if countdown_seconds <= 3 else 5
+                # Tetris-colored border
+                pygame.draw.rect(self.screen, (255, 0, 255), countdown_rect, border_width)
+                
+                # Inner glow effect for last 3 seconds
+                if countdown_seconds <= 3:
+                    inner_glow = pygame.Rect(
+                        countdown_rect.x + 10, countdown_rect.y + 10,
+                        countdown_rect.width - 20, countdown_rect.height - 20
+                    )
+                    glow_alpha = int(100 * (4 - countdown_seconds) / 3)
+                    glow_surface = pygame.Surface((inner_glow.width, inner_glow.height))
+                    glow_surface.set_alpha(glow_alpha)
+                    glow_surface.fill((255, 0, 255))  # Magenta glow
+                    self.screen.blit(glow_surface, inner_glow.topleft)
+                
+                # Dramatic countdown number
+                from constants import ERROR_RED
+                font_size = int(200 * size_multiplier * pulse_factor)
+                font = pygame.font.Font(None, font_size)
+                countdown_color = ERROR_RED if countdown_seconds <= 3 else (255, 0, 255)
+                number_text = str(countdown_seconds)
+                number_surface = font.render(number_text, True, countdown_color)
+                number_rect = number_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                
+                # Outline for visibility
+                outline_color = (0, 0, 0) if countdown_seconds <= 3 else (100, 0, 150)
+                outline_surface = font.render(number_text, True, outline_color)
+                outline_rect = outline_surface.get_rect(center=(self.screen_width // 2 + 2, self.screen_height // 2 + 2))
+                self.screen.blit(outline_surface, outline_rect)
+                self.screen.blit(number_surface, number_rect)
+                
+                # Warning text below countdown
+                if countdown_seconds <= 3:
+                    warning_text = "TETRIS WALL INCOMING!"
+                else:
+                    warning_text = "PREPARE FOR TETRIS!"
+                
+                warning_font = pygame.font.Font(None, 48)
+                warning_surface = warning_font.render(warning_text, True, (255, 255, 255))
+                warning_rect = warning_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 150))
+                self.screen.blit(warning_surface, warning_rect)
+            else:
+                # Countdown over - draw tetris wall
+                tetris_wall_screen_x = self.tetris_wall_x - self.camera.x
+                if -100 < tetris_wall_screen_x < self.screen_width + 100:
+                    # Draw tetris wall - full height, made of tetris blocks
+                    tetris_wall_rect = pygame.Rect(tetris_wall_screen_x, 0, 60, self.screen_height)
+                    
+                    # Tetris colors
+                    tetris_colors = [
+                        (255, 0, 0),    # Red
+                        (0, 255, 0),    # Green
+                        (0, 0, 255),    # Blue
+                        (255, 255, 0),  # Yellow
+                        (255, 0, 255),  # Magenta
+                        (0, 255, 255),  # Cyan
+                        (255, 165, 0),  # Orange
+                    ]
+                    
+                    # Draw tetris blocks stacked in the wall
+                    block_size = 30
+                    import random
+                    tetris_rng = random.Random(9999)  # Fixed seed for consistent pattern
+                    for y in range(0, self.screen_height, block_size):
+                        for x_offset in range(0, 60, block_size):
+                            block_x = tetris_wall_screen_x + x_offset
+                            block_y = y
+                            block_color = tetris_colors[(y // block_size + x_offset // block_size) % len(tetris_colors)]
+                            
+                            # Draw tetris block
+                            block_rect = pygame.Rect(block_x, block_y, block_size, block_size)
+                            pygame.draw.rect(self.screen, block_color, block_rect)
+                            pygame.draw.rect(self.screen, BLACK, block_rect, 2)
+                            
+                            # Grid lines inside block
+                            pygame.draw.line(self.screen, BLACK, (block_x, block_y + block_size//2), (block_x + block_size, block_y + block_size//2), 1)
+                            pygame.draw.line(self.screen, BLACK, (block_x + block_size//2, block_y), (block_x + block_size//2, block_y + block_size), 1)
+                    
+                    # Warning text on wall
+                    warning_font = pygame.font.Font(None, 24)
+                    warning_text = "!!!"
+                    warning_surface = warning_font.render(warning_text, True, (255, 255, 255))
+                    warning_rect = warning_surface.get_rect(center=(tetris_wall_screen_x + 30, self.screen_height // 2))
                     self.screen.blit(warning_surface, warning_rect)
         
         # Draw Geometry Dash mode elements
@@ -2984,7 +3282,6 @@ class Game:
             pygame.draw.rect(self.screen, BLACK, star_panel_rect, 3)
             
             # Draw star icon
-            import math
             star_center_x = self.screen_width - 180
             star_center_y = 30
             star_points = []

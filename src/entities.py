@@ -277,19 +277,25 @@ class Player(pygame.sprite.Sprite):
         
         # In underwater mode, don't check for ground collisions (no gravity)
         if underwater_mode:
-            # Just check for wall collisions in all directions
+            # Platforms are safe - player can pass through or just stop movement, no collision response
+            # Just stop velocity if colliding with platform (no pushing/glitching)
             collisions = pygame.sprite.spritecollide(self, platforms, False)
-            for platform in collisions:
-                # Horizontal collisions
-                if self.vel_x > 0:
-                    self.rect.right = platform.rect.left
-                elif self.vel_x < 0:
-                    self.rect.left = platform.rect.right
-                # Vertical collisions
-                if self.vel_y > 0:
-                    self.rect.bottom = platform.rect.top
-                elif self.vel_y < 0:
-                    self.rect.top = platform.rect.bottom
+            if collisions:
+                # Just stop movement, don't push player around
+                self.vel_x = 0
+                self.vel_y = 0
+            
+            # Check obstacle collisions (lasers kill the player in underwater mode)
+            obstacle_collisions = pygame.sprite.spritecollide(self, obstacles, False)
+            if obstacle_collisions:
+                # Lasers and other obstacles kill the player
+                self.is_dying = True
+                self.animation_state = "dying"
+                self.sprite_animator.set_animation("dying", self.facing_right)
+                if self.sound_manager:
+                    self.sound_manager.play('hit')
+                return "hit"
+            
             self.draw_character()
             return None
         
@@ -339,6 +345,15 @@ class Player(pygame.sprite.Sprite):
             return None
         enemy_collisions = pygame.sprite.spritecollide(self, enemies, False)
         for enemy in enemy_collisions:
+            # In underwater mode (Level 8), all enemies are unkillable and always kill the player
+            if hasattr(self, '_game') and hasattr(self._game, 'underwater_mode') and self._game.underwater_mode:
+                # All enemies kill player on contact in underwater mode
+                self.is_dying = True
+                self.animation_state = "dying"
+                self.sprite_animator.set_animation("dying", self.facing_right)
+                if self.sound_manager:
+                    self.sound_manager.play('hit')
+                return "hit"
             # Fork enemies are unkillable obstacles - always damage player
             if enemy.enemy_type == "fork":
                 # Fork enemies cannot be killed, even with star powerup
@@ -356,10 +371,7 @@ class Player(pygame.sprite.Sprite):
                     self.sound_manager.play('enemy_kill')
                 return "enemy_killed"
             # Check if player is jumping on enemy (player's bottom is above enemy's center)
-            # In underwater mode, check if player is above enemy (swimming down onto enemy)
-            elif (self.vel_y > 0 and self.rect.bottom < enemy.rect.centery) or \
-                 (hasattr(self, '_game') and hasattr(self._game, 'underwater_mode') and 
-                  self._game.underwater_mode and self.rect.bottom < enemy.rect.centery):
+            elif self.vel_y > 0 and self.rect.bottom < enemy.rect.centery:
                 # Handle different enemy types
                 if enemy.enemy_type in ["double_hit", "air_dragon"] and enemy.health > 1:
                     # Multi-hit enemy - damage but don't kill
@@ -376,10 +388,7 @@ class Player(pygame.sprite.Sprite):
                 else:
                     # Single-hit enemy or final hit on multi-hit enemy
                     enemy.kill()
-                    if hasattr(self, '_game') and hasattr(self._game, 'underwater_mode') and self._game.underwater_mode:
-                        self.vel_y = -3  # Small upward push in water
-                    else:
-                        self.vel_y = int(current_jump * 1.15)
+                    self.vel_y = int(current_jump * 1.15)
                     self.animation_state = "stomping"
                     self.sprite_animator.set_animation("stomping", self.facing_right)
                     if self.sound_manager:
@@ -387,7 +396,6 @@ class Player(pygame.sprite.Sprite):
                     return "enemy_killed"
             else:
                 # Player got hit by enemy (only if star is not active)
-                # In underwater mode, any contact with enemy side kills player
                 self.is_dying = True
                 self.animation_state = "dying"
                 self.sprite_animator.set_animation("dying", self.facing_right)
@@ -507,6 +515,10 @@ class Enemy(pygame.sprite.Sprite):
         elif enemy_type == "piranha":
             self.image = pygame.Surface((40, 30), pygame.SRCALPHA)  # Small piranha
             self.speed = ENEMY_SPEED * 1.5  # Very fast
+        elif enemy_type == "tetris_block":
+            # Large tetris block enemy (like real tetris blocks)
+            self.image = pygame.Surface((60, 60), pygame.SRCALPHA)  # Large tetris block
+            self.speed = ENEMY_SPEED * 0.8  # Slower but bigger
         else:  # jumper
             self.image = pygame.Surface((52, 62), pygame.SRCALPHA)
             self.speed = ENEMY_SPEED
@@ -846,6 +858,41 @@ class Enemy(pygame.sprite.Sprite):
             pygame.draw.polygon(self.image, YELLOW, [(w-5, h//2-3), (w-2, h//2), (w-5, h//2+3)])
             # Eye
             pygame.draw.circle(self.image, BLACK, (w//2, h//3), 2)
+        elif self.enemy_type == "tetris_block":
+            # Draw evil tetris block enemy (large, like real tetris blocks)
+            w, h = self.image.get_width(), self.image.get_height()
+            # Tetris colors
+            tetris_colors = [
+                (255, 0, 0),    # Red
+                (0, 255, 0),    # Green
+                (0, 0, 255),    # Blue
+                (255, 255, 0),  # Yellow
+                (255, 0, 255),  # Magenta
+                (0, 255, 255),  # Cyan
+                (255, 165, 0),  # Orange
+            ]
+            import random
+            block_color = random.choice(tetris_colors)
+            
+            # Draw as a solid tetris block with grid pattern
+            self.image.fill(block_color)
+            pygame.draw.rect(self.image, BLACK, (0, 0, w, h), 3)
+            
+            # Grid pattern inside (like tetris blocks)
+            block_size = 20
+            for x in range(0, w, block_size):
+                pygame.draw.line(self.image, BLACK, (x, 0), (x, h), 1)
+            for y in range(0, h, block_size):
+                pygame.draw.line(self.image, BLACK, (0, y), (w, y), 1)
+            
+            # Evil eyes
+            pygame.draw.circle(self.image, WHITE, (w//3, h//3), 6)
+            pygame.draw.circle(self.image, BLACK, (w//3, h//3), 3)
+            pygame.draw.circle(self.image, WHITE, (2*w//3, h//3), 6)
+            pygame.draw.circle(self.image, BLACK, (2*w//3, h//3), 3)
+            
+            # Angry mouth
+            pygame.draw.arc(self.image, BLACK, (w//4, h//2, w//2, h//3), 0, 3.14, 3)
         else:
             base_c = colors[0]
             sec_c = colors[1] if len(colors) > 1 else LIGHT_PURPLE
@@ -1445,40 +1492,44 @@ class Platform(pygame.sprite.Sprite):
         elif self.platform_type == "vertical_moving":
             self.draw_vertical_moving_platform(width, height)
         else:
-            # Use theme-based styling for regular platforms
-            theme_name = self.theme.get('name', 'default')
-            
-            if theme_name == "The Big Melt-down":
-                self.draw_cheese_platform(width, height)
-            elif theme_name == "Moss-t Be Joking":
-                self.draw_mossy_platform(width, height)
-            elif theme_name == "Smelted Dreams":
-                self.draw_metal_platform(width, height)
-                # Chance to overlay flames to indicate 'on fire'
-                import random
-                if random.random() < 0.35:
-                    self._overlay_flames(width, height)
-            elif theme_name == "Frost and Furious":
-                self.draw_ice_platform(width, height)
-            elif theme_name == "Boo Who?":
-                self.draw_ghost_platform(width, height)
-            elif theme_name == "404: Floor Not Found":
-                self.draw_digital_platform(width, height)
-            elif theme_name == "Pasta La Vista":
-                self.draw_pasta_platform(width, height)
-            elif theme_name == "Concrete Jungle":
-                self.draw_concrete_platform(width, height)
-            elif theme_name == "Kraken Me Up":
-                # Check if this is a bubble wall
-                if hasattr(self, 'is_bubble_wall') and self.is_bubble_wall:
-                    self.draw_bubble_wall(width, height)
-                else:
-                    self.draw_underwater_platform(width, height)
-            elif theme_name == "Neon Night":
-                self.draw_neon_platform(width, height)
+            # Check if this is a tetris-colored platform
+            if hasattr(self, 'is_tetris_platform') and self.is_tetris_platform:
+                self.draw_tetris_colored_platform(width, height)
             else:
-                # Default platform styling
-                self.draw_default_platform(width, height)
+                # Use theme-based styling for regular platforms
+                theme_name = self.theme.get('name', 'default')
+                
+                if theme_name == "The Big Melt-down":
+                    self.draw_cheese_platform(width, height)
+                elif theme_name == "Moss-t Be Joking":
+                    self.draw_mossy_platform(width, height)
+                elif theme_name == "Smelted Dreams":
+                    self.draw_metal_platform(width, height)
+                    # Chance to overlay flames to indicate 'on fire'
+                    import random
+                    if random.random() < 0.35:
+                        self._overlay_flames(width, height)
+                elif theme_name == "Frost and Furious":
+                    self.draw_ice_platform(width, height)
+                elif theme_name == "Boo Who?":
+                    self.draw_ghost_platform(width, height)
+                elif theme_name == "404: Floor Not Found":
+                    self.draw_digital_platform(width, height)
+                elif theme_name == "Pasta La Vista":
+                    self.draw_pasta_platform(width, height)
+                elif theme_name == "Concrete Jungle":
+                    self.draw_concrete_platform(width, height)
+                elif theme_name == "Kraken Me Up":
+                    # Check if this is a bubble wall
+                    if hasattr(self, 'is_bubble_wall') and self.is_bubble_wall:
+                        self.draw_bubble_wall(width, height)
+                    else:
+                        self.draw_underwater_platform(width, height)
+                elif theme_name == "Neon Night" or theme_name == "Tetris Terror":
+                    self.draw_neon_platform(width, height)
+                else:
+                    # Default platform styling
+                    self.draw_default_platform(width, height)
     
     def draw_cheese_platform(self, width, height):
         # Melted cheese theme with slightly different color
@@ -1635,6 +1686,35 @@ class Platform(pygame.sprite.Sprite):
             pygame.draw.line(self.image, BLACK, (x, 0), (x, height), 1)
         for y in range(0, height, block_size):
             pygame.draw.line(self.image, BLACK, (0, y), (width, y), 1)
+    
+    def draw_tetris_colored_platform(self, width, height):
+        """Draw a platform with tetris block colors and pattern."""
+        # Get tetris color (default to cyan if not set)
+        tetris_color = getattr(self, 'tetris_color', (0, 255, 255))
+        
+        # Platform base with tetris color
+        self.image.fill(tetris_color)
+        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        
+        # Tetris block pattern (grid of blocks)
+        block_size = 30  # Large blocks like in tetris
+        for x in range(0, width, block_size):
+            for y in range(0, height, block_size):
+                # Create pixelated block effect
+                if (x // block_size + y // block_size) % 2 == 0:
+                    # Lighter shade for checkerboard
+                    lighter = tuple(min(255, c + 30) for c in tetris_color)
+                    pygame.draw.rect(self.image, lighter, (x, y, block_size, block_size))
+        
+        # Grid lines for Tetris effect
+        for x in range(0, width, block_size):
+            pygame.draw.line(self.image, BLACK, (x, 0), (x, height), 2)
+        for y in range(0, height, block_size):
+            pygame.draw.line(self.image, BLACK, (0, y), (width, y), 2)
+        
+        # Highlight edges
+        darker = tuple(max(0, c - 50) for c in tetris_color)
+        pygame.draw.rect(self.image, darker, (0, 0, width, height), 2)
     
     def draw_fading_platform(self, width, height):
         """Draw a fading platform for Level 6."""
@@ -2661,6 +2741,9 @@ class Obstacle(pygame.sprite.Sprite):
             self.image = pygame.Surface((36, 20), pygame.SRCALPHA)
         elif obstacle_type == "lava_pit":
             self.image = pygame.Surface((80, 16), pygame.SRCALPHA)
+        elif obstacle_type == "falling_tetris":
+            # Large tetris block (like real tetris blocks) - 60x60px
+            self.image = pygame.Surface((60, 60), pygame.SRCALPHA)
         elif obstacle_type == "spinning_laser":
             # Large spinning laser (windmill-like) - 120px default size
             size = 120  # Default size
@@ -2865,46 +2948,53 @@ class Obstacle(pygame.sprite.Sprite):
                 pygame.draw.polygon(self.image, (100, 100, 100), spike_points)
                 pygame.draw.polygon(self.image, BLACK, spike_points, 2)
         elif self.obstacle_type == "falling_tetris":
-            # Draw falling Tetris pieces
+            # Draw large falling Tetris blocks (like real tetris blocks)
             w, h = self.image.get_width(), self.image.get_height()
             
-            # Different Tetris piece shapes
-            tetris_shapes = [
-                # I-piece (line)
-                [(w//2-15, h//2-5), (w//2+15, h//2-5), (w//2+15, h//2+5), (w//2-15, h//2+5)],
-                # T-piece
-                [(w//2-10, h//2-10), (w//2+10, h//2-10), (w//2+10, h//2), (w//2+5, h//2), (w//2+5, h//2+10), (w//2-5, h//2+10), (w//2-5, h//2), (w//2-10, h//2)],
-                # L-piece
-                [(w//2-10, h//2-10), (w//2+10, h//2-10), (w//2+10, h//2+5), (w//2-5, h//2+5), (w//2-5, h//2+10), (w//2-10, h//2+10)]
+            # Tetris colors
+            tetris_colors = [
+                (255, 0, 0),    # Red (I-piece)
+                (0, 255, 0),    # Green (S-piece)
+                (0, 0, 255),    # Blue (J-piece)
+                (255, 255, 0),  # Yellow (O-piece)
+                (255, 0, 255),  # Magenta (T-piece)
+                (0, 255, 255),  # Cyan (Z-piece)
+                (255, 165, 0),  # Orange (L-piece)
             ]
             
-            shape = random.choice(tetris_shapes)
-            neon_color = random.choice([(255, 0, 255), (0, 255, 255), (255, 255, 0), (0, 255, 0), (255, 0, 0)])
-            pygame.draw.polygon(self.image, neon_color, shape)
-            pygame.draw.polygon(self.image, BLACK, shape, 2)
+            # Choose random tetris color
+            block_color = random.choice(tetris_colors)
+            
+            # Draw as a solid tetris block with grid pattern
+            self.image.fill(block_color)
+            pygame.draw.rect(self.image, BLACK, (0, 0, w, h), 3)
+            
+            # Grid pattern inside (like tetris blocks)
+            block_size = 20
+            for x in range(0, w, block_size):
+                pygame.draw.line(self.image, BLACK, (x, 0), (x, h), 1)
+            for y in range(0, h, block_size):
+                pygame.draw.line(self.image, BLACK, (0, y), (w, y), 1)
+            
+            # Highlight edges for 3D effect
+            darker = tuple(max(0, c - 50) for c in block_color)
+            pygame.draw.rect(self.image, darker, (0, 0, w, h), 2)
         elif self.obstacle_type == "spinning_laser":
-            # Draw large spinning laser (windmill-like)
+            # Draw red static laser (no spinning) for Level 8
             import math  # Import math for calculations
             size = self.image.get_width()
             center = size // 2
             
-            # Clear and redraw with rotation
+            # Clear and redraw (no rotation)
             self.image.fill((0, 0, 0, 0))
             
-            # Update rotation
-            if hasattr(self, 'rotation_angle'):
-                self.rotation_angle += self.rotation_speed
-            else:
-                self.rotation_angle = 0
-                self.rotation_speed = 0.05
+            # Draw 4 red laser blades in fixed positions (no rotation)
+            laser_color = (255, 0, 0)  # Red laser
+            laser_dark = (200, 0, 0)  # Darker red
             
-            # Draw 4 laser blades (windmill style)
-            laser_color = NEON_CYAN  # Bright cyan for underwater laser
-            laser_dark = (0, 200, 255)  # Darker cyan
-            
-            # Calculate blade positions with rotation
+            # Calculate blade positions (fixed, no rotation)
             for i in range(4):
-                angle = self.rotation_angle + (i * math.pi / 2)
+                angle = i * math.pi / 2  # Fixed angle, no rotation
                 # Blade extends from center to edge
                 blade_length = size // 2 - 10
                 blade_width = 20
@@ -2990,7 +3080,26 @@ class Obstacle(pygame.sprite.Sprite):
                                   [(tooth_x, h//2+5), (tooth_x-3, h//2+15), (tooth_x+3, h//2+15)])
     
     def update(self, level_height=None):
-        """Update falling meatballs - make them fall and respawn at top throughout entire level."""
+        """Update falling obstacles - meatballs and tetris blocks."""
+        # Handle falling tetris blocks
+        if self.obstacle_type == "falling_tetris":
+            if not hasattr(self, 'falling'):
+                self.falling = True
+                self.fall_speed = 3.0 + random.random() * 2.0  # Random fall speed
+            # Make tetris block fall down
+            self.rect.y += int(self.fall_speed)
+            
+            # If tetris block falls below screen, respawn it at the top
+            if level_height and self.rect.top > level_height + 50:
+                import random
+                # Use stored level width if available, otherwise use a reasonable default
+                level_width = getattr(self, 'level_width', 13600)  # Default to Level 9 width
+                # Respawn at random x position across the ENTIRE level width
+                self.rect.x = random.randint(150, level_width - 250)  # Random x across entire level width
+                self.rect.y = random.randint(-400, -50)  # Above screen at random height for staggered falling
+                self.fall_speed = 3.0 + random.random() * 2.0  # Random fall speed for variety
+        
+        # Handle falling meatballs
         if self.obstacle_type == "giant_meatball" and hasattr(self, 'falling') and self.falling:
             # Make meatball fall down
             self.rect.y += int(self.fall_speed)
