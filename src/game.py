@@ -875,6 +875,10 @@ class Game:
                             self.continue_to_next_level()
                     elif event.key == pygame.K_m:
                             self.state = GameState.MENU
+                elif self.state == GameState.VICTORY:
+                    if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN or event.key == pygame.K_m:
+                        # Stats already published when victory screen was shown
+                        self.state = GameState.MENU
                 elif self.state == GameState.LEVEL_SELECT:
                     if event.key == pygame.K_UP:
                         self.current_level = (self.current_level - 1) % len(self.levels)
@@ -2470,6 +2474,11 @@ class Game:
         self.lives = 3
         self.score = 0
         self.ros_stats_published = False  # Reset flag for new game
+        # Reset victory-related attributes
+        if hasattr(self, 'victory_points'):
+            delattr(self, 'victory_points')
+        if hasattr(self, 'final_score_with_victory'):
+            delattr(self, 'final_score_with_victory')
         # Respect ROS start_level parameter if set
         if ROS_ENABLED:
             try:
@@ -2764,7 +2773,18 @@ class Game:
                             self.sound_manager.play('coin')  # Success sound
             
             if self.player.rect.right >= self.camera.level_width - 5:
-                self.state = GameState.LEVEL_COMPLETE
+                # Check if we've completed the difficulty group
+                if hasattr(self, 'selected_difficulty') and hasattr(self, 'difficulty_end_level'):
+                    if self.current_level >= self.difficulty_end_level:
+                        # Completed all levels in difficulty group - show victory!
+                        self.state = GameState.VICTORY
+                        # Calculate and add victory points
+                        self._calculate_victory_points()
+                    else:
+                        self.state = GameState.LEVEL_COMPLETE
+                else:
+                    # No difficulty selected (normal mode), use old behavior
+                    self.state = GameState.LEVEL_COMPLETE
             self.enemies.update(self.platforms)
             self.powerups.update()
             self.star_powerups.update()
@@ -2892,6 +2912,8 @@ class Game:
             self._draw_level_select()
         elif self.state == GameState.DIFFICULTY_SELECT:
             self.draw_difficulty_select()
+        elif self.state == GameState.VICTORY:
+            self._draw_victory()
         pygame.display.flip()
 
     def _draw_menu(self):
@@ -3408,6 +3430,88 @@ class Game:
             # Update high score
             self.update_high_score()
 
+    def _calculate_victory_points(self):
+        """Calculate victory points based on difficulty completed."""
+        if not hasattr(self, 'selected_difficulty'):
+            return
+        
+        # Base victory points by difficulty
+        if self.selected_difficulty == "easy":
+            victory_points = 500
+        elif self.selected_difficulty == "medium":
+            victory_points = 1000
+        elif self.selected_difficulty == "hard":
+            victory_points = 2000
+        else:
+            victory_points = 0
+        
+        # Store victory points (will be added to score)
+        self.victory_points = victory_points
+        self.final_score_with_victory = self.score + victory_points
+        
+        rospy.loginfo(f"Victory! Difficulty: {self.selected_difficulty}, Base Score: {self.score}, Victory Points: {victory_points}, Final: {self.final_score_with_victory}")
+
+    def _publish_victory_stats(self):
+        """Publish victory stats to ROS."""
+        if ROS_ENABLED and hasattr(self, 'ros_pub_stats') and hasattr(self, 'final_score_with_victory'):
+            msg = Int64()
+            msg.data = self.final_score_with_victory
+            try:
+                self.ros_pub_stats.publish(msg)
+                rospy.loginfo(f"ROS: Published victory score {self.final_score_with_victory}")
+                self.ros_stats_published = True
+                # Also update the score for display
+                self.score = self.final_score_with_victory
+            except Exception as e:
+                rospy.logerr(f"Failed to publish victory stats: {e}")
+
+    def _draw_victory(self):
+        """Draw victory screen after completing difficulty group."""
+        # Publish stats immediately when victory screen is shown (only once)
+        if ROS_ENABLED and not self.ros_stats_published and hasattr(self, 'ros_pub_stats') and hasattr(self, 'final_score_with_victory'):
+            msg = Int64()
+            msg.data = self.final_score_with_victory
+            try:
+                self.ros_pub_stats.publish(msg)
+                rospy.loginfo(f"ROS: Published victory score {self.final_score_with_victory}")
+                self.ros_stats_published = True
+                # Also update the score for display
+                self.score = self.final_score_with_victory
+            except Exception as e:
+                rospy.logerr(f"Failed to publish victory stats: {e}")
+        
+        self.bg.draw(self.screen, self.current_level, is_bonus_room=False)
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
+        overlay.set_alpha(140)
+        overlay.fill(BLACK)
+        self.screen.blit(overlay, (0, 0))
+        
+        # Victory title
+        difficulty_name = self.selected_difficulty.capitalize() if hasattr(self, 'selected_difficulty') else "Difficulty"
+        self.ui.draw_cheese_title(self.screen, f"{difficulty_name} Difficulty", self.screen_width//2, 80, center=True, size=64)
+        self.ui.draw_cheese_title(self.screen, "COMPLETED!", self.screen_width//2, 150, center=True, size=96)
+        
+        # Show stats
+        if hasattr(self, 'victory_points'):
+            self.ui.draw_bubble_text(self.screen, f"Base Score: {self.score:,}", self.screen_width//2, 280, center=True, size=40)
+            self.ui.draw_bubble_text(self.screen, f"Victory Bonus: +{self.victory_points:,}", self.screen_width//2, 330, center=True, size=36, color=MINT_GREEN)
+            self.ui.draw_bubble_text(self.screen, f"Final Score: {self.final_score_with_victory:,}", self.screen_width//2, 390, center=True, size=48, color=SOFT_YELLOW)
+        
+        # Show completed levels
+        if hasattr(self, 'difficulty_start_level') and hasattr(self, 'difficulty_end_level'):
+            start = self.difficulty_start_level + 1
+            end = self.difficulty_end_level + 1
+            self.ui.draw_bubble_text(self.screen, f"Levels {start}-{end} Completed!", self.screen_width//2, 450, center=True, size=32)
+        
+        # Continue button
+        self.ui.draw_cheese_button(self.screen, "Press SPACE/ENTER to Continue", self.screen_width//2, self.screen_height - 100, width=500)
+        
+        # Update high score
+        if hasattr(self, 'final_score_with_victory'):
+            if self.final_score_with_victory > self.high_score:
+                self.high_score = self.final_score_with_victory
+                self.save_high_score()
+
     def _draw_game_over(self):
         # ROS Logic: Publish stats if not already done
         if ROS_ENABLED and not self.ros_stats_published and hasattr(self, 'ros_pub_stats'):
@@ -3544,6 +3648,17 @@ class Game:
                             self.current_level = 6
                     
                     self.difficulty_selected = True
+                    # Store difficulty and level range
+                    self.selected_difficulty = difficulty
+                    if difficulty == "easy":
+                        self.difficulty_start_level = 0
+                        self.difficulty_end_level = 2  # Levels 1-3 (indices 0-2)
+                    elif difficulty == "medium":
+                        self.difficulty_start_level = 3
+                        self.difficulty_end_level = 5  # Levels 4-6 (indices 3-5)
+                    elif difficulty == "hard":
+                        self.difficulty_start_level = 6
+                        self.difficulty_end_level = 9  # Levels 7-10 (indices 6-9)
                     self.start_game()
                 else:
                     rospy.logwarn(f"Failed to set difficulty: {resp.message}")
@@ -3553,10 +3668,17 @@ class Game:
             # Fallback if ROS not enabled (testing)
             if difficulty == "easy":
                 self.current_level = 0
+                self.difficulty_start_level = 0
+                self.difficulty_end_level = 2
             elif difficulty == "medium":
                 self.current_level = 3
+                self.difficulty_start_level = 3
+                self.difficulty_end_level = 5
             elif difficulty == "hard":
                 self.current_level = 6
+                self.difficulty_start_level = 6
+                self.difficulty_end_level = 9
+            self.selected_difficulty = difficulty
             self.start_game()
 
     def draw_difficulty_select(self):
