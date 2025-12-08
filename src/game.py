@@ -23,6 +23,15 @@ from ui import UI
 from levels import load_levels
 from smart_level_generator import SmartLevelGenerator
 
+# ROS Integration
+try:
+    import rospy
+    from std_msgs.msg import Int64
+    from ros_nodes.srv import SetGameDifficulty
+    ROS_ENABLED = True
+except ImportError:
+    ROS_ENABLED = False
+
 
 class Game:
     """Top-level game controller.
@@ -54,6 +63,16 @@ class Game:
         self.load_high_score()
         self.levels = load_levels()
         self.theme = self.levels[self.current_level]["theme"]
+        
+        # ROS Integration
+        self.ros_stats_published = False
+        if ROS_ENABLED:
+            try:
+                rospy.init_node('mario_game_gui', anonymous=True)
+                self.ros_pub_stats = rospy.Publisher('game_over_stats', Int64, queue_size=10)
+                rospy.loginfo("GUI Game Node Initialized")
+            except rospy.ROSException:
+                pass  # Already initialized or ROS not available
 
         # Initialize Geometry Dash mode attributes
         self.geometry_dash_mode = False
@@ -868,6 +887,13 @@ class Game:
                     # Also allow L key to go back to menu from level select
                     elif event.key == pygame.K_l:
                         self.state = GameState.MENU
+                elif self.state == GameState.DIFFICULTY_SELECT:
+                    if event.key == pygame.K_1:
+                        self.set_difficulty("easy")
+                    elif event.key == pygame.K_2:
+                        self.set_difficulty("medium")
+                    elif event.key == pygame.K_3:
+                        self.set_difficulty("hard")
                 elif self.state == GameState.PLAYING:
                     # ESC key to exit level and return to main menu
                     if event.key == pygame.K_ESCAPE:
@@ -2443,7 +2469,18 @@ class Game:
         self.state = GameState.PLAYING
         self.lives = 3
         self.score = 0
-        self.current_level = 0
+        self.ros_stats_published = False  # Reset flag for new game
+        # Respect ROS start_level parameter if set
+        if ROS_ENABLED:
+            try:
+                if rospy.has_param('start_level'):
+                    self.current_level = rospy.get_param('start_level', 0)
+                else:
+                    self.current_level = 0
+            except:
+                self.current_level = 0
+        else:
+            self.current_level = 0
         self.theme = self.levels[self.current_level]["theme"]
         self.all_sprites.empty()
         self.platforms.empty()
@@ -2490,7 +2527,11 @@ class Game:
                 self.player._game = self  # Give player access to game state
                 self.all_sprites.add(self.player)
                 self._needs_initial_load = False
-                self.state = GameState.MENU
+                # If ROS enabled, go to Difficulty Select (will wait for user_name there)
+                if ROS_ENABLED:
+                    self.state = GameState.DIFFICULTY_SELECT
+                else:
+                    self.state = GameState.MENU
                 return
         except Exception as e:
             print(f"Error during initial load: {e}")
@@ -2498,6 +2539,16 @@ class Game:
             traceback.print_exc()
             self.state = GameState.MENU
             return
+        
+        # ROS Logic: Check for user_name and transition to difficulty select if needed
+        if ROS_ENABLED and self.state == GameState.DIFFICULTY_SELECT:
+            try:
+                if rospy.has_param('user_name') and not hasattr(self, 'difficulty_selected'):
+                    # User name is available, difficulty select screen will show options
+                    pass
+            except:
+                pass
+        
         if self.state == GameState.PLAYING:
             self.camera.update(self.player)
             
@@ -2839,6 +2890,8 @@ class Game:
             self._draw_level_complete()
         elif self.state == GameState.LEVEL_SELECT:
             self._draw_level_select()
+        elif self.state == GameState.DIFFICULTY_SELECT:
+            self.draw_difficulty_select()
         pygame.display.flip()
 
     def _draw_menu(self):
@@ -3356,6 +3409,17 @@ class Game:
             self.update_high_score()
 
     def _draw_game_over(self):
+        # ROS Logic: Publish stats if not already done
+        if ROS_ENABLED and not self.ros_stats_published and hasattr(self, 'ros_pub_stats'):
+            msg = Int64()
+            msg.data = self.score
+            try:
+                self.ros_pub_stats.publish(msg)
+                rospy.loginfo(f"ROS: Published final score {self.score}")
+                self.ros_stats_published = True
+            except Exception as e:
+                rospy.logerr(f"Failed to publish stats: {e}")
+        
         # Draw rat image - FULL SCREEN BACKGROUND
         if hasattr(self, 'rat_image') and self.rat_image is not None:
             self.screen.blit(self.rat_image, (0, 0))
@@ -3454,6 +3518,81 @@ class Game:
         # Restore theme (only if we changed it)
         if old_theme is not None:
             self.bg.set_theme(old_theme)
+
+    def set_difficulty(self, difficulty):
+        """Set game difficulty via ROS service and start game."""
+        # Call ROS service
+        if ROS_ENABLED:
+            rospy.wait_for_service('difficulty')
+            try:
+                set_diff = rospy.ServiceProxy('difficulty', SetGameDifficulty)
+                resp = set_diff(difficulty)
+                if resp.success:
+                    rospy.loginfo(f"Difficulty set to {difficulty}")
+                    
+                    # Read start_level from parameter (set by game_node)
+                    try:
+                        start_level = rospy.get_param('start_level', 0)
+                        self.current_level = start_level
+                    except:
+                        # Fallback mapping
+                        if difficulty == "easy":
+                            self.current_level = 0
+                        elif difficulty == "medium":
+                            self.current_level = 3
+                        elif difficulty == "hard":
+                            self.current_level = 6
+                    
+                    self.difficulty_selected = True
+                    self.start_game()
+                else:
+                    rospy.logwarn(f"Failed to set difficulty: {resp.message}")
+            except Exception as e:
+                rospy.logerr(f"Service call failed: {e}")
+        else:
+            # Fallback if ROS not enabled (testing)
+            if difficulty == "easy":
+                self.current_level = 0
+            elif difficulty == "medium":
+                self.current_level = 3
+            elif difficulty == "hard":
+                self.current_level = 6
+            self.start_game()
+
+    def draw_difficulty_select(self):
+        """Draw difficulty selection screen."""
+        # Draw background
+        self.bg.draw(self.screen, 0, is_bonus_room=False)
+        
+        overlay = pygame.Surface((self.screen_width, self.screen_height))
+        overlay.set_alpha(180)
+        overlay.fill(BLACK)
+        self.screen.blit(overlay, (0, 0))
+        
+        # Check if we have user name
+        user_name = None
+        if ROS_ENABLED:
+            try:
+                if rospy.has_param('user_name'):
+                    user_name = rospy.get_param('user_name')
+            except:
+                pass
+        
+        if user_name:
+            self.ui.draw_cheese_title(self.screen, f"Hello, {user_name}!", self.screen_width//2, 80, center=True, size=64)
+            self.ui.draw_bubble_text(self.screen, "Select Difficulty:", self.screen_width//2, 160, center=True, size=48)
+            
+            # Buttons
+            y = 240
+            self.ui.draw_cheese_button(self.screen, "1. Easy (Levels 1-3)", self.screen_width//2, y, width=400)
+            self.ui.draw_cheese_button(self.screen, "2. Medium (Levels 4-6)", self.screen_width//2, y + 80, width=400)
+            self.ui.draw_cheese_button(self.screen, "3. Hard (Levels 7-10)", self.screen_width//2, y + 160, width=400)
+            
+            self.ui.draw_bubble_text(self.screen, "Press 1, 2, or 3 to select", self.screen_width//2, y + 260, center=True, size=32)
+        else:
+            self.ui.draw_cheese_title(self.screen, "Welcome!", self.screen_width//2, 100, center=True, size=72)
+            self.ui.draw_bubble_text(self.screen, "Please enter your details", self.screen_width//2, 200, center=True, size=48)
+            self.ui.draw_bubble_text(self.screen, "in the terminal window...", self.screen_width//2, 250, center=True, size=48)
 
 
 def run_game():
