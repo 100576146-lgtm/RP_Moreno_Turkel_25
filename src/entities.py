@@ -171,8 +171,11 @@ class Player(pygame.sprite.Sprite):
             return None
         
         keys = pygame.key.get_pressed()
-        self.vel_x = 0
-        old_facing = self.facing_right
+        
+        # Check if underwater mode FIRST
+        underwater_mode = False
+        if hasattr(self, '_game') and hasattr(self._game, 'underwater_mode'):
+            underwater_mode = self._game.underwater_mode
         
         # Calculate speed and jump based on star powerup and speed multiplier
         base_speed = PLAYER_SPEED * self.speed_multiplier
@@ -180,57 +183,117 @@ class Player(pygame.sprite.Sprite):
         base_jump = JUMP_STRENGTH * self.jump_multiplier
         current_jump = base_jump * 1.3 if self.star_active else base_jump
         
-        # Determine animation state based on movement and physics
-        if self.vel_y < -2:  # Jumping up
-            self.animation_state = "jumping"
-        elif self.vel_y > 2:  # Falling
-            self.animation_state = "falling"
-        elif abs(self.vel_x) > 0:  # Moving horizontally
-            self.animation_state = "walking"
-        else:
-            self.animation_state = "idle"
+        # Reset velocities
+        self.vel_x = 0
+        if underwater_mode:
+            self.vel_y = 0  # Reset vertical velocity in underwater mode
+        old_facing = self.facing_right
         
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            self.vel_x = -current_speed
-            self.facing_right = False
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            self.vel_x = current_speed
-            self.facing_right = True
-        
-        # Update sprite animator with current state
-        self.sprite_animator.set_animation(self.animation_state, self.facing_right)
-        
-        # Variable jump height implementation
-        jump_pressed = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]
-        
-        if jump_pressed and self.on_ground:
-            # Track how long jump button is held
-            self.jump_hold_time += 1
-            if self.jump_hold_time <= self.max_jump_hold:
-                # Apply 10% bonus for holding jump button longer
-                jump_bonus = 1.0 + (self.jump_hold_time / self.max_jump_hold) * 0.1  # Up to 10% bonus
-                self.vel_y = current_jump * jump_bonus
+        if underwater_mode:
+            # Swimming mechanics - no gravity, can move in all 4 directions
+            # Slower movement in water (water resistance)
+            swim_speed = current_speed * 0.8
+            
+            # Horizontal movement
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                self.vel_x = -swim_speed
+                self.facing_right = False
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                self.vel_x = swim_speed
+                self.facing_right = True
+            
+            # Vertical movement (UP/DOWN for swimming)
+            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                self.vel_y = -swim_speed
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                self.vel_y = swim_speed
+            
+            # Animation state for swimming
+            if abs(self.vel_x) > 0 or abs(self.vel_y) > 0:
+                self.animation_state = "walking"  # Use walking animation for swimming
             else:
-                # Maximum bonus reached
-                self.vel_y = current_jump * 1.1
-            self.on_ground = False
-            self.animation_state = "jumping"
-            self.sprite_animator.set_animation("jumping", self.facing_right)
-            if self.sound_manager:
-                self.sound_manager.play('jump')
-        elif not jump_pressed:
-            # Reset jump hold time when button is released
-            self.jump_hold_time = 0
+                self.animation_state = "idle"
+            
+            # Update sprite animator
+            self.sprite_animator.set_animation(self.animation_state, self.facing_right)
+        else:
+            # Normal ground movement
+            # Determine animation state based on movement and physics
+            if self.vel_y < -2:  # Jumping up
+                self.animation_state = "jumping"
+            elif self.vel_y > 2:  # Falling
+                self.animation_state = "falling"
+            elif abs(self.vel_x) > 0:  # Moving horizontally
+                self.animation_state = "walking"
+            else:
+                self.animation_state = "idle"
+            
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                self.vel_x = -current_speed
+                self.facing_right = False
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                self.vel_x = current_speed
+                self.facing_right = True
+            
+            # Update sprite animator with current state
+            self.sprite_animator.set_animation(self.animation_state, self.facing_right)
+            
+            # Variable jump height implementation
+            jump_pressed = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]
+            
+            if jump_pressed and self.on_ground:
+                # Track how long jump button is held
+                self.jump_hold_time += 1
+                if self.jump_hold_time <= self.max_jump_hold:
+                    # Apply 10% bonus for holding jump button longer
+                    jump_bonus = 1.0 + (self.jump_hold_time / self.max_jump_hold) * 0.1  # Up to 10% bonus
+                    self.vel_y = current_jump * jump_bonus
+                else:
+                    # Maximum bonus reached
+                    self.vel_y = current_jump * 1.1
+                self.on_ground = False
+                self.animation_state = "jumping"
+                self.sprite_animator.set_animation("jumping", self.facing_right)
+                if self.sound_manager:
+                    self.sound_manager.play('jump')
+            elif not jump_pressed:
+                # Reset jump hold time when button is released
+                self.jump_hold_time = 0
+            
+            # Apply gravity only in normal mode
+            self.vel_y += GRAVITY
         
-        self.vel_y += GRAVITY
-        self.rect.x += self.vel_x
+        # Horizontal movement
+        self.rect.x += int(self.vel_x)
         collisions = pygame.sprite.spritecollide(self, platforms, False)
         for platform in collisions:
             if self.vel_x > 0:
                 self.rect.right = platform.rect.left
             elif self.vel_x < 0:
                 self.rect.left = platform.rect.right
+        
+        # Vertical movement
         self.rect.y += int(self.vel_y)
+        
+        # In underwater mode, don't check for ground collisions (no gravity)
+        if underwater_mode:
+            # Just check for wall collisions in all directions
+            collisions = pygame.sprite.spritecollide(self, platforms, False)
+            for platform in collisions:
+                # Horizontal collisions
+                if self.vel_x > 0:
+                    self.rect.right = platform.rect.left
+                elif self.vel_x < 0:
+                    self.rect.left = platform.rect.right
+                # Vertical collisions
+                if self.vel_y > 0:
+                    self.rect.bottom = platform.rect.top
+                elif self.vel_y < 0:
+                    self.rect.top = platform.rect.bottom
+            self.draw_character()
+            return None
+        
+        # Normal ground mode - check for ground collisions
         self.on_ground = False
         collisions = pygame.sprite.spritecollide(self, platforms, False)
         for platform in collisions:
@@ -245,6 +308,16 @@ class Player(pygame.sprite.Sprite):
                 self.vel_y = 0
                 self.on_ground = True
                 self.jump_count = 0
+                
+                # Pasta slide auto-slide behavior - automatically move player diagonally down
+                if hasattr(platform, 'platform_type') and platform.platform_type == "pasta_slide":
+                    # Calculate slide direction (diagonal down-right)
+                    slide_speed_x = 3  # Horizontal slide speed
+                    slide_speed_y = 2  # Vertical slide speed
+                    self.vel_x = slide_speed_x
+                    self.vel_y = slide_speed_y
+                    # Keep player on the slide
+                    self.on_ground = True  # Still consider on ground for jump
                 # Platform landing logic (for future use)
                 pass
             elif self.vel_y < 0:
@@ -266,19 +339,35 @@ class Player(pygame.sprite.Sprite):
             return None
         enemy_collisions = pygame.sprite.spritecollide(self, enemies, False)
         for enemy in enemy_collisions:
-            # If star is active, kill enemies on any touch
-            if self.star_active:
+            # Fork enemies are unkillable obstacles - always damage player
+            if enemy.enemy_type == "fork":
+                # Fork enemies cannot be killed, even with star powerup
+                # They always damage the player on contact
+                self.is_dying = True
+                self.animation_state = "dying"
+                self.sprite_animator.set_animation("dying", self.facing_right)
+                if self.sound_manager:
+                    self.sound_manager.play('hit')
+                return "hit"
+            # If star is active, kill enemies on any touch (except forks)
+            elif self.star_active:
                 enemy.kill()
                 if self.sound_manager:
                     self.sound_manager.play('enemy_kill')
                 return "enemy_killed"
             # Check if player is jumping on enemy (player's bottom is above enemy's center)
-            elif self.vel_y > 0 and self.rect.bottom < enemy.rect.centery:
+            # In underwater mode, check if player is above enemy (swimming down onto enemy)
+            elif (self.vel_y > 0 and self.rect.bottom < enemy.rect.centery) or \
+                 (hasattr(self, '_game') and hasattr(self._game, 'underwater_mode') and 
+                  self._game.underwater_mode and self.rect.bottom < enemy.rect.centery):
                 # Handle different enemy types
                 if enemy.enemy_type in ["double_hit", "air_dragon"] and enemy.health > 1:
                     # Multi-hit enemy - damage but don't kill
                     enemy.take_damage()
-                    self.vel_y = int(current_jump * 1.15)
+                    if hasattr(self, '_game') and hasattr(self._game, 'underwater_mode') and self._game.underwater_mode:
+                        self.vel_y = -3  # Small upward push in water
+                    else:
+                        self.vel_y = int(current_jump * 1.15)
                     self.animation_state = "stomping"
                     self.sprite_animator.set_animation("stomping", self.facing_right)
                     if self.sound_manager:
@@ -287,7 +376,10 @@ class Player(pygame.sprite.Sprite):
                 else:
                     # Single-hit enemy or final hit on multi-hit enemy
                     enemy.kill()
-                    self.vel_y = int(current_jump * 1.15)
+                    if hasattr(self, '_game') and hasattr(self._game, 'underwater_mode') and self._game.underwater_mode:
+                        self.vel_y = -3  # Small upward push in water
+                    else:
+                        self.vel_y = int(current_jump * 1.15)
                     self.animation_state = "stomping"
                     self.sprite_animator.set_animation("stomping", self.facing_right)
                     if self.sound_manager:
@@ -295,6 +387,7 @@ class Player(pygame.sprite.Sprite):
                     return "enemy_killed"
             else:
                 # Player got hit by enemy (only if star is not active)
+                # In underwater mode, any contact with enemy side kills player
                 self.is_dying = True
                 self.animation_state = "dying"
                 self.sprite_animator.set_animation("dying", self.facing_right)
@@ -396,6 +489,24 @@ class Enemy(pygame.sprite.Sprite):
             self.is_air_enemy = True
             self.health = 2
             self.max_health = 2
+        elif enemy_type == "meatball":
+            self.image = pygame.Surface((64, 64), pygame.SRCALPHA)  # Big meatball
+            self.speed = ENEMY_SPEED * 0.6  # Slower but bigger
+        elif enemy_type == "fork":
+            self.image = pygame.Surface((32, 56), pygame.SRCALPHA)  # Tall fork
+            self.speed = ENEMY_SPEED * 1.3  # Faster fork
+        elif enemy_type == "worm":
+            self.image = pygame.Surface((80, 24), pygame.SRCALPHA)  # Long, low worm
+            self.speed = ENEMY_SPEED * 0.8  # Slower crawling speed
+        elif enemy_type == "crab":
+            self.image = pygame.Surface((50, 40), pygame.SRCALPHA)  # Crab enemy
+            self.speed = ENEMY_SPEED * 0.7  # Slow but steady
+        elif enemy_type == "shark":
+            self.image = pygame.Surface((80, 50), pygame.SRCALPHA)  # Large shark
+            self.speed = ENEMY_SPEED * 1.2  # Fast swimming
+        elif enemy_type == "piranha":
+            self.image = pygame.Surface((40, 30), pygame.SRCALPHA)  # Small piranha
+            self.speed = ENEMY_SPEED * 1.5  # Very fast
         else:  # jumper
             self.image = pygame.Surface((52, 62), pygame.SRCALPHA)
             self.speed = ENEMY_SPEED
@@ -587,6 +698,154 @@ class Enemy(pygame.sprite.Sprite):
                 sparkle_x = center_x + random.randint(-15, 15)
                 sparkle_y = center_y + random.randint(-10, 10)
                 pygame.draw.circle(self.image, (255, 215, 0), (sparkle_x, sparkle_y), 1)  # Gold sparkles
+        elif self.enemy_type == "meatball":
+            # Big angry meatball enemy for pasta level
+            center_x, center_y = w//2 + offset_x, h//2 + offset_y
+            meatball_size = min(w, h) - 8  # Large meatball
+            
+            # Main meatball body (brown/reddish)
+            meatball_color = (150, 80, 60)  # Brown meatball
+            pygame.draw.circle(self.image, meatball_color, (center_x, center_y), meatball_size // 2)
+            pygame.draw.circle(self.image, (120, 60, 40), (center_x, center_y), meatball_size // 2, 3)
+            
+            # Meatball texture (irregular spots)
+            for _ in range(8):
+                spot_x = center_x + random.randint(-meatball_size//3, meatball_size//3)
+                spot_y = center_y + random.randint(-meatball_size//3, meatball_size//3)
+                spot_size = random.randint(2, 4)
+                pygame.draw.circle(self.image, (130, 70, 50), (spot_x, spot_y), spot_size)
+            
+            # Angry eyes
+            eye_y = center_y - 8
+            # Left eye
+            pygame.draw.circle(self.image, WHITE, (center_x - 8, eye_y), 6)
+            pygame.draw.circle(self.image, RED, (center_x - 8, eye_y), 4)
+            pygame.draw.circle(self.image, BLACK, (center_x - 8, eye_y), 2)
+            # Right eye
+            pygame.draw.circle(self.image, WHITE, (center_x + 8, eye_y), 6)
+            pygame.draw.circle(self.image, RED, (center_x + 8, eye_y), 4)
+            pygame.draw.circle(self.image, BLACK, (center_x + 8, eye_y), 2)
+            
+            # Angry eyebrows
+            pygame.draw.line(self.image, BLACK, (center_x - 12, eye_y - 6), (center_x - 4, eye_y - 4), 3)
+            pygame.draw.line(self.image, BLACK, (center_x + 4, eye_y - 4), (center_x + 12, eye_y - 6), 3)
+            
+            # Angry mouth (frown)
+            mouth_y = center_y + 8
+            pygame.draw.arc(self.image, BLACK, (center_x - 10, mouth_y - 4, 20, 12), 0, 3.14, 3)
+            
+            # Sauce drips
+            for i in range(3):
+                drip_x = center_x + random.randint(-meatball_size//3, meatball_size//3)
+                drip_y = center_y + meatball_size//2 - 2
+                pygame.draw.circle(self.image, MARINARA_RED, (drip_x, drip_y), 2)
+        elif self.enemy_type == "fork":
+            # Angry fork enemy for pasta level
+            center_x, center_y = w//2 + offset_x, h//2 + offset_y
+            
+            # Fork handle (vertical)
+            handle_color = (200, 200, 200)  # Silver/grey
+            handle_rect = pygame.Rect(center_x - 3, center_y - h//2 + 5, 6, h - 10)
+            pygame.draw.rect(self.image, handle_color, handle_rect)
+            pygame.draw.rect(self.image, BLACK, handle_rect, 2)
+            
+            # Fork head (horizontal with prongs)
+            fork_head_y = center_y - h//2 + 8
+            # Main fork body
+            fork_body = pygame.Rect(center_x - 8, fork_head_y, 16, 6)
+            pygame.draw.rect(self.image, handle_color, fork_body)
+            pygame.draw.rect(self.image, BLACK, fork_body, 1)
+            
+            # Four prongs
+            prong_spacing = 4
+            prong_start_x = center_x - 6
+            for i in range(4):
+                prong_x = prong_start_x + (i * prong_spacing)
+                prong_length = 8
+                pygame.draw.line(self.image, handle_color, (prong_x, fork_head_y), (prong_x, fork_head_y - prong_length), 2)
+                pygame.draw.line(self.image, BLACK, (prong_x, fork_head_y), (prong_x, fork_head_y - prong_length), 1)
+            
+            # Angry face on fork handle
+            # Eyes
+            eye_y = center_y - 5
+            pygame.draw.circle(self.image, RED, (center_x - 3, eye_y), 3)
+            pygame.draw.circle(self.image, RED, (center_x + 3, eye_y), 3)
+            pygame.draw.circle(self.image, BLACK, (center_x - 3, eye_y), 1)
+            pygame.draw.circle(self.image, BLACK, (center_x + 3, eye_y), 1)
+            
+            # Angry eyebrows
+            pygame.draw.line(self.image, BLACK, (center_x - 6, eye_y - 3), (center_x - 1, eye_y - 1), 2)
+            pygame.draw.line(self.image, BLACK, (center_x + 1, eye_y - 1), (center_x + 6, eye_y - 3), 2)
+            
+            # Angry mouth
+            mouth_y = center_y + 3
+            pygame.draw.arc(self.image, BLACK, (center_x - 4, mouth_y - 2, 8, 6), 0, 3.14, 2)
+        elif self.enemy_type == "worm":
+            # Worm enemy - long, segmented, green, crawls around
+            import math
+            from constants import GLITCH_GREEN, ERROR_RED
+            worm_color = GLITCH_GREEN  # Green worm color for Level 7
+            worm_dark = (0, 200, 0)  # Darker green for segments
+            
+            # Draw segmented worm body (multiple connected circles)
+            segments = 5
+            segment_width = w // segments
+            for i in range(segments):
+                seg_x = i * segment_width + segment_width // 2
+                seg_y = h // 2
+                # Slight wave pattern for crawling effect
+                wave_offset = int(2 * math.sin(i * 0.8))
+                seg_y += wave_offset
+                
+                # Draw segment
+                pygame.draw.circle(self.image, worm_color, (seg_x, seg_y), segment_width // 2 - 2)
+                pygame.draw.circle(self.image, worm_dark, (seg_x, seg_y), segment_width // 2 - 2, 2)
+            
+            # Draw head with eyes
+            head_x = segment_width // 2
+            head_y = h // 2
+            pygame.draw.circle(self.image, worm_color, (head_x, head_y), segment_width // 2)
+            pygame.draw.circle(self.image, worm_dark, (head_x, head_y), segment_width // 2, 2)
+            # Eyes (red for contrast)
+            pygame.draw.circle(self.image, ERROR_RED, (head_x - 3, head_y - 2), 2)
+            pygame.draw.circle(self.image, ERROR_RED, (head_x + 3, head_y - 2), 2)
+        elif self.enemy_type == "crab":
+            # Crab enemy - red/orange, sideways walking
+            crab_color = (200, 50, 50)  # Red crab
+            crab_dark = (150, 30, 30)
+            # Body
+            pygame.draw.ellipse(self.image, crab_color, (10, 10, w-20, h-20))
+            pygame.draw.ellipse(self.image, crab_dark, (10, 10, w-20, h-20), 2)
+            # Claws
+            pygame.draw.circle(self.image, crab_color, (5, h//2), 8)
+            pygame.draw.circle(self.image, crab_color, (w-5, h//2), 8)
+            # Eyes
+            pygame.draw.circle(self.image, BLACK, (w//3, 8), 3)
+            pygame.draw.circle(self.image, BLACK, (2*w//3, 8), 3)
+        elif self.enemy_type == "shark":
+            # Shark enemy - grey, large, menacing
+            shark_color = (100, 100, 120)  # Grey shark
+            shark_dark = (60, 60, 80)
+            # Body (teardrop shape)
+            pygame.draw.ellipse(self.image, shark_color, (5, 10, w-10, h-20))
+            pygame.draw.ellipse(self.image, shark_dark, (5, 10, w-10, h-20), 2)
+            # Fin
+            pygame.draw.polygon(self.image, shark_color, [(w//2, 5), (w//2 + 10, 15), (w//2 - 10, 15)])
+            # Mouth
+            pygame.draw.arc(self.image, BLACK, (w-15, h//2-5, 20, 15), 0, 3.14, 3)
+            # Eye
+            pygame.draw.circle(self.image, RED, (w//2, h//3), 4)
+        elif self.enemy_type == "piranha":
+            # Piranha enemy - small, fast, red
+            piranha_color = (220, 20, 20)  # Bright red
+            piranha_dark = (150, 10, 10)
+            # Body (small oval)
+            pygame.draw.ellipse(self.image, piranha_color, (5, 8, w-10, h-16))
+            pygame.draw.ellipse(self.image, piranha_dark, (5, 8, w-10, h-16), 2)
+            # Teeth
+            pygame.draw.polygon(self.image, YELLOW, [(w-5, h//2-3), (w-2, h//2), (w-5, h//2+3)])
+            # Eye
+            pygame.draw.circle(self.image, BLACK, (w//2, h//3), 2)
         else:
             base_c = colors[0]
             sec_c = colors[1] if len(colors) > 1 else LIGHT_PURPLE
@@ -596,13 +855,86 @@ class Enemy(pygame.sprite.Sprite):
             pygame.draw.circle(self.image, sec_c, (2*w//3, h//2-9), 10)
             pygame.draw.circle(self.image, BLACK, (w//3, h//2-9), 3)
             pygame.draw.circle(self.image, BLACK, (2*w//3, h//2-9), 3)
-        # Feet for all types
-        foot_y = h - 10
-        pygame.draw.ellipse(self.image, BLACK, (w//4, foot_y, w//6, 8))
-        pygame.draw.ellipse(self.image, BLACK, (3*w//4 - w//6, foot_y, w//6, 8))
+        # Feet for all types (except worms - they crawl)
+        if self.enemy_type != "worm":
+            foot_y = h - 10
+            pygame.draw.ellipse(self.image, BLACK, (w//4, foot_y, w//6, 8))
+            pygame.draw.ellipse(self.image, BLACK, (3*w//4 - w//6, foot_y, w//6, 8))
 
     def update(self, platforms):
         """Update enemy movement, gravity, and platform collisions."""
+        # Handle swimming enemies FIRST (before gravity)
+        if hasattr(self, 'is_swimming') and self.is_swimming:
+            # Swimming enemies (crab, shark, piranha) - no gravity, can move in all directions
+            if not hasattr(self, 'swim_timer'):
+                self.swim_timer = 0
+                self.swim_direction = random.choice([0, 1, 2, 3])  # 0=right, 1=left, 2=up, 3=down
+                self.swim_change_timer = 0
+            self.swim_timer += 1
+            self.swim_change_timer += 1
+            
+            # Change direction periodically (more frequently for more movement)
+            if self.swim_change_timer > 90:  # Change direction every 1.5 seconds
+                self.swim_direction = random.choice([0, 1, 2, 3])
+                self.swim_change_timer = 0
+            
+            # Set velocity based on direction
+            if self.swim_direction == 0:  # Right
+                self.vel_x = self.speed
+                self.vel_y = 0
+            elif self.swim_direction == 1:  # Left
+                self.vel_x = -self.speed
+                self.vel_y = 0
+            elif self.swim_direction == 2:  # Up
+                self.vel_x = 0
+                self.vel_y = -self.speed
+            else:  # Down
+                self.vel_x = 0
+                self.vel_y = self.speed
+            
+            # No gravity for swimming enemies - skip to movement
+            # Horizontal movement
+            self.rect.x += int(self.vel_x)
+            collisions = pygame.sprite.spritecollide(self, platforms, False)
+            for platform in collisions:
+                if self.vel_x > 0:
+                    self.rect.right = platform.rect.left
+                    self.swim_direction = 1  # Reverse to left
+                elif self.vel_x < 0:
+                    self.rect.left = platform.rect.right
+                    self.swim_direction = 0  # Reverse to right
+            
+            # Vertical movement
+            self.rect.y += int(self.vel_y)
+            collisions = pygame.sprite.spritecollide(self, platforms, False)
+            for platform in collisions:
+                if self.vel_y > 0:
+                    self.rect.bottom = platform.rect.top
+                    self.swim_direction = 2  # Reverse to up
+                elif self.vel_y < 0:
+                    self.rect.top = platform.rect.bottom
+                    self.swim_direction = 3  # Reverse to down
+            
+            # Boundary checks for swimming enemies
+            # Use large boundaries for underwater maze (LEVEL_WIDTH/HEIGHT are already imported at top)
+            max_x = 20000  # Large boundary for underwater maze
+            max_y = 1000
+            
+            if self.rect.left < 0:
+                self.rect.left = 0
+                self.swim_direction = 0  # Go right
+            if self.rect.right > max_x:
+                self.rect.right = max_x
+                self.swim_direction = 1  # Go left
+            if self.rect.top < 0:
+                self.rect.top = 0
+                self.swim_direction = 3  # Go down
+            if self.rect.bottom > max_y:
+                self.rect.bottom = max_y
+                self.swim_direction = 2  # Go up
+            
+            return  # Skip normal enemy update for swimming enemies
+        
         # Handle air enemies differently
         if self.is_air_enemy:
             self.update_air_enemy()
@@ -615,28 +947,64 @@ class Enemy(pygame.sprite.Sprite):
                 self.vel_y = JUMP_STRENGTH * 0.7
                 self.jump_timer = 0
                 self.jump_cooldown = random.randint(60, 120)
+        elif self.enemy_type == "meatball":
+            # Meatball enemies jump up and down constantly
+            if not hasattr(self, 'jump_timer'):
+                self.jump_timer = 0
+                self.jump_cooldown = random.randint(40, 80)  # More frequent jumps
+            self.jump_timer += 1
+            if self.jump_timer >= self.jump_cooldown and self.vel_y == 0:
+                self.vel_y = JUMP_STRENGTH * 0.6  # Slightly lower jump than jumper
+                self.jump_timer = 0
+                self.jump_cooldown = random.randint(40, 80)
+        elif self.enemy_type == "worm":
+            # Worm enemies crawl around - always moving horizontally
+            # Worms don't jump, they just crawl
+            if not hasattr(self, 'crawl_timer'):
+                self.crawl_timer = 0
+            self.crawl_timer += 1
+            # Worms can reverse direction occasionally
+            if self.crawl_timer > 180 and random.random() < 0.01:  # 1% chance every 3 seconds
+                self.vel_x *= -1
+                self.crawl_timer = 0
             
-            # Horizontal movement
+        # Horizontal movement
         self.rect.x += int(self.vel_x)
         collisions = pygame.sprite.spritecollide(self, platforms, False)
         for platform in collisions:
             if self.vel_x > 0:
                 self.rect.right = platform.rect.left
-                self.vel_x = -self.speed
+                if hasattr(self, 'is_swimming') and self.is_swimming:
+                    # Swimming enemies reverse direction on collision
+                    self.swim_direction = 1  # Reverse to left
+                else:
+                    self.vel_x = -self.speed
             elif self.vel_x < 0:
                 self.rect.left = platform.rect.right
-                self.vel_x = self.speed
+                if hasattr(self, 'is_swimming') and self.is_swimming:
+                    # Swimming enemies reverse direction on collision
+                    self.swim_direction = 0  # Reverse to right
+                else:
+                    self.vel_x = self.speed
             
-            # Vertical movement
+        # Vertical movement
         self.rect.y += int(self.vel_y)
         collisions = pygame.sprite.spritecollide(self, platforms, False)
         for platform in collisions:
             if self.vel_y > 0:
                 self.rect.bottom = platform.rect.top
-                self.vel_y = 0
+                if hasattr(self, 'is_swimming') and self.is_swimming:
+                    # Swimming enemies reverse direction on collision
+                    self.swim_direction = 2  # Reverse to up
+                else:
+                    self.vel_y = 0
             elif self.vel_y < 0:
                 self.rect.top = platform.rect.bottom
-                self.vel_y = 0
+                if hasattr(self, 'is_swimming') and self.is_swimming:
+                    # Swimming enemies reverse direction on collision
+                    self.swim_direction = 3  # Reverse to down
+                else:
+                    self.vel_y = 0
             
             # Boundary checks
         if self.rect.left < 0 or self.rect.right > LEVEL_WIDTH:
@@ -850,24 +1218,95 @@ class Checkpoint(pygame.sprite.Sprite):
                 pygame.draw.rect(spaceship, BLACK, (exhaust_x - 2, exhaust_y, 4, 8), 1)
             
             # Landing gear/stand
-            stand_rect = pygame.Rect(w//2 - 15, h-25, 30, 15)
-            pygame.draw.rect(spaceship, DARK_GREY, stand_rect)
-            pygame.draw.rect(spaceship, BLACK, stand_rect, 2)
+            pygame.draw.rect(spaceship, STEEL_GREY, (ship_center_x - 4, ship_center_y + ship_height//2, 8, 15))
+            pygame.draw.rect(spaceship, BLACK, (ship_center_x - 4, ship_center_y + ship_height//2, 8, 15), 1)
             
             self.image.blit(spaceship, (0, 0))
             
-            # Activation effect - glowing lights
+            # Activation effect - glowing engines
             if self.activated:
-                # Glowing navigation lights
-                pygame.draw.circle(self.image, (0, 255, 0), (ship_center_x - 20, ship_center_y - 10), 3)  # Green light
-                pygame.draw.circle(self.image, (255, 0, 0), (ship_center_x + 20, ship_center_y - 10), 3)  # Red light
-                pygame.draw.circle(self.image, (0, 0, 255), (ship_center_x, ship_center_y - 15), 3)  # Blue light
-                
-                # Glowing engine exhausts
                 for offset in [-12, -4, 4, 12]:
                     exhaust_x = ship_center_x + offset
-                    exhaust_y = ship_center_y + ship_height//2 + 8
-                    pygame.draw.circle(self.image, (255, 150, 0), (exhaust_x, exhaust_y), 2)  # Glowing exhaust
+                    exhaust_y = ship_center_y + ship_height//2 + 5
+                    # Glowing exhaust
+                    pygame.draw.circle(self.image, ECTOPLASM_GREEN, (exhaust_x, exhaust_y + 10), 3)
+        elif theme_name == "Pasta La Vista":
+            # Draw a bowl of pasta checkpoint
+            bowl = pygame.Surface((w, h), pygame.SRCALPHA)
+            cx, cy = w//2, h-20
+            
+            # Bowl base (ceramic bowl)
+            bowl_color = (240, 240, 250)  # White/cream ceramic
+            bowl_rim_color = (200, 200, 210)  # Slightly darker rim
+            bowl_width = 60
+            bowl_height = 50
+            
+            # Bowl shape (rounded bottom, straight sides)
+            bowl_rect = pygame.Rect(cx - bowl_width//2, cy - bowl_height, bowl_width, bowl_height)
+            # Draw bowl body
+            pygame.draw.ellipse(bowl, bowl_color, bowl_rect)
+            pygame.draw.ellipse(bowl, BLACK, bowl_rect, 2)
+            
+            # Bowl rim (top edge)
+            rim_rect = pygame.Rect(cx - bowl_width//2, cy - bowl_height, bowl_width, 8)
+            pygame.draw.ellipse(bowl, bowl_rim_color, rim_rect)
+            pygame.draw.ellipse(bowl, BLACK, rim_rect, 2)
+            
+            # Pasta inside the bowl (noodles)
+            pasta_color = PARMESAN_YELLOW
+            sauce_color = MARINARA_RED
+            pasta_start_y = cy - bowl_height + 15
+            
+            # Draw pasta strands (noodles) in the bowl
+            for i in range(8):
+                noodle_x = cx - 20 + (i * 5)
+                noodle_y = pasta_start_y + (i % 3) * 3
+                # Draw curved noodle strands
+                noodle_points = []
+                for j in range(5):
+                    x = noodle_x + j * 3
+                    y = noodle_y + int(2 * math.sin(j * 0.5))
+                    noodle_points.append((x, y))
+                if len(noodle_points) > 1:
+                    pygame.draw.lines(bowl, pasta_color, False, noodle_points, 3)
+                    # Highlight
+                    highlight_points = [(p[0], p[1] - 1) for p in noodle_points]
+                    pygame.draw.lines(bowl, (255, 250, 220), False, highlight_points, 1)
+            
+            # Sauce splatters
+            for _ in range(5):
+                sauce_x = cx + random.randint(-20, 20)
+                sauce_y = pasta_start_y + random.randint(0, 20)
+                pygame.draw.circle(bowl, sauce_color, (sauce_x, sauce_y), 3)
+                pygame.draw.circle(bowl, (150, 30, 30), (sauce_x, sauce_y), 1)  # Darker center
+            
+            # Meatballs in the pasta
+            for i in range(2):
+                meatball_x = cx - 10 + (i * 20)
+                meatball_y = pasta_start_y + 10
+                meatball_size = 5
+                pygame.draw.circle(bowl, (150, 80, 60), (meatball_x, meatball_y), meatball_size)
+                pygame.draw.circle(bowl, BLACK, (meatball_x, meatball_y), meatball_size, 1)
+            
+            # Parmesan cheese sprinkles
+            for _ in range(8):
+                cheese_x = cx + random.randint(-25, 25)
+                cheese_y = pasta_start_y + random.randint(0, 25)
+                pygame.draw.circle(bowl, (255, 255, 200), (cheese_x, cheese_y), 1)
+            
+            self.image.blit(bowl, (0, 0))
+            
+            # Activation effect - steam rising from bowl
+            if self.activated:
+                for i in range(3):
+                    steam_x = cx - 15 + (i * 15)
+                    steam_y = cy - bowl_height - 5
+                    # Draw steam wisps
+                    for j in range(3):
+                        wisp_x = steam_x + random.randint(-3, 3)
+                        wisp_y = steam_y - (j * 5)
+                        pygame.draw.circle(self.image, (220, 220, 230), (wisp_x, wisp_y), 2)
+                        pygame.draw.circle(self.image, (240, 240, 250), (wisp_x, wisp_y), 1)
         elif theme_name == "404: Floor Not Found":
             # Draw a computer checkpoint
             computer = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -1030,7 +1469,11 @@ class Platform(pygame.sprite.Sprite):
             elif theme_name == "Concrete Jungle":
                 self.draw_concrete_platform(width, height)
             elif theme_name == "Kraken Me Up":
-                self.draw_underwater_platform(width, height)
+                # Check if this is a bubble wall
+                if hasattr(self, 'is_bubble_wall') and self.is_bubble_wall:
+                    self.draw_bubble_wall(width, height)
+                else:
+                    self.draw_underwater_platform(width, height)
             elif theme_name == "Neon Night":
                 self.draw_neon_platform(width, height)
             else:
@@ -1276,26 +1719,65 @@ class Platform(pygame.sprite.Sprite):
             pygame.draw.circle(self.image, WHITE, (sparkle_x, sparkle_y), 2)
     
     def draw_pasta_slide(self, width, height):
-        """Draw a pasta slide platform for Level 7."""
-        # Pasta colors
+        """Draw a pasta slide platform that looks like long noodles for Level 6."""
+        # Pasta colors - yellow/cream for noodles
         pasta_color = PARMESAN_YELLOW
-        sauce_color = (200, 50, 50)  # Red sauce
+        noodle_highlight = (255, 250, 220)  # Lighter highlight
+        sauce_color = MARINARA_RED  # Red sauce
         
-        # Create sloped pasta shape
-        self.image.fill(pasta_color)
-        pygame.draw.rect(self.image, BLACK, (0, 0, width, height), 3)
+        # Clear and create sloped surface
+        self.image.fill((0, 0, 0, 0))  # Transparent background
         
-        # Draw pasta strands
-        for i in range(0, width, 15):
-            strand_x = i
-            strand_height = height - (i // 3)  # Sloped effect
-            pygame.draw.rect(self.image, (255, 255, 255), (strand_x, height - strand_height, 10, strand_height), 1)
+        # Create diagonal slope - noodles go from top-left to bottom-right
+        slope_angle = height / width  # Calculate slope
         
-        # Add sauce drips
-        for i in range(0, width, 20):
-            drip_x = i + 10
-            pygame.draw.circle(self.image, sauce_color, (drip_x, height - 5), 3)
-            pygame.draw.circle(self.image, BLACK, (drip_x, height - 5), 3, 1)
+        # Draw long noodle strands that curve and twist
+        num_noodles = max(3, width // 25)  # 3-5 noodles depending on width
+        for noodle_idx in range(num_noodles):
+            noodle_x_start = (noodle_idx * width // num_noodles) + 10
+            noodle_width = 8  # Thickness of each noodle
+            
+            # Draw a long curved noodle strand
+            points = []
+            for x in range(0, width, 2):
+                y_offset = int((x / width) * height * 0.7)  # Diagonal slope
+                # Add slight wave/curve to make it look like real pasta
+                wave = int(3 * math.sin(x * 0.1 + noodle_idx))
+                y = height - y_offset + wave
+                points.append((x, y))
+            
+            # Draw the noodle strand
+            if len(points) > 1:
+                # Main noodle body
+                for i in range(len(points) - 1):
+                    pygame.draw.line(self.image, pasta_color, points[i], points[i+1], noodle_width)
+                    # Highlight on top
+                    highlight_y = points[i][1] - 2
+                    if highlight_y >= 0:
+                        pygame.draw.line(self.image, noodle_highlight, 
+                                       (points[i][0], highlight_y), 
+                                       (points[i+1][0], highlight_y), 2)
+        
+        # Add sauce drips and splatters along the noodles
+        for i in range(0, width, 30):
+            drip_x = i + random.randint(5, 15)
+            drip_y = height - int((i / width) * height * 0.7) + random.randint(-5, 5)
+            if 0 <= drip_y < height:
+                # Sauce splatter
+                pygame.draw.circle(self.image, sauce_color, (drip_x, drip_y), 4)
+                pygame.draw.circle(self.image, (150, 30, 30), (drip_x, drip_y), 2)  # Darker center
+                # Small drips
+                for j in range(2):
+                    small_drip_x = drip_x + random.randint(-8, 8)
+                    small_drip_y = drip_y + random.randint(2, 6)
+                    if 0 <= small_drip_y < height:
+                        pygame.draw.circle(self.image, sauce_color, (small_drip_x, small_drip_y), 2)
+        
+        # Add some parmesan cheese sprinkles
+        for _ in range(width // 15):
+            cheese_x = random.randint(0, width)
+            cheese_y = random.randint(0, height)
+            pygame.draw.circle(self.image, (255, 255, 200), (cheese_x, cheese_y), 1)
     
     def draw_pasta_moving(self, width, height):
         """Draw a moving pasta platform for Level 7."""
@@ -2179,11 +2661,27 @@ class Obstacle(pygame.sprite.Sprite):
             self.image = pygame.Surface((36, 20), pygame.SRCALPHA)
         elif obstacle_type == "lava_pit":
             self.image = pygame.Surface((80, 16), pygame.SRCALPHA)
+        elif obstacle_type == "spinning_laser":
+            # Large spinning laser (windmill-like) - 120px default size
+            size = 120  # Default size
+            self.image = pygame.Surface((size, size), pygame.SRCALPHA)
+            self.rotation_angle = 0
+            self.rotation_speed = 0.05
+        elif obstacle_type == "giant_meatball":
+            self.image = pygame.Surface((60, 60), pygame.SRCALPHA)  # Large falling meatball
         else:
             self.image = pygame.Surface((40, 20), pygame.SRCALPHA)
+        
         self.rect = self.image.get_rect()
-        self.rect.x = x
-        self.rect.y = y
+        # For spinning laser, center the rect on the position
+        if obstacle_type == "spinning_laser":
+            self.rect.center = (x, y)
+        else:
+            self.rect.x = x
+            self.rect.y = y
+        self.falling = False  # For falling meatballs
+        self.fall_speed = 0
+        self.original_x = x  # Store original x for respawning
         self.draw_obstacle()
 
     def draw_obstacle(self):
@@ -2194,9 +2692,21 @@ class Obstacle(pygame.sprite.Sprite):
                 [(0, 24), (6, 12), (12, 24)],
                 [(8, 24), (14, 8), (20, 24)]
             ]
+            # Use floor color for Level 7 spikes (match platform color), otherwise use default
+            if hasattr(self, 'is_level7_spike') and self.is_level7_spike:
+                # Match the floor/platform color for Level 7 (404: Floor Not Found)
+                # Platforms use neon green (0, 255, 0) with darker green outline (0, 200, 0)
+                spike_color = (0, 255, 0)  # Match platform fill color (neon green)
+                outline_color = (0, 200, 0)  # Match platform outline color (darker green)
+                outline_width = 2  # Thicker outline for visibility
+            else:
+                spike_color = DUSTY_ROSE
+                outline_color = BLACK
+                outline_width = 1
+            
             for spike in spike_points:
-                pygame.draw.polygon(self.image, DUSTY_ROSE, spike)
-                pygame.draw.polygon(self.image, BLACK, spike, 1)
+                pygame.draw.polygon(self.image, spike_color, spike)
+                pygame.draw.polygon(self.image, outline_color, spike, outline_width)
         elif self.obstacle_type == "ice_spike":
             # Taller, blueish spikes for ice
             spike_points = [
@@ -2354,7 +2864,6 @@ class Obstacle(pygame.sprite.Sprite):
                 ]
                 pygame.draw.polygon(self.image, (100, 100, 100), spike_points)
                 pygame.draw.polygon(self.image, BLACK, spike_points, 2)
-        
         elif self.obstacle_type == "falling_tetris":
             # Draw falling Tetris pieces
             w, h = self.image.get_width(), self.image.get_height()
@@ -2373,7 +2882,57 @@ class Obstacle(pygame.sprite.Sprite):
             neon_color = random.choice([(255, 0, 255), (0, 255, 255), (255, 255, 0), (0, 255, 0), (255, 0, 0)])
             pygame.draw.polygon(self.image, neon_color, shape)
             pygame.draw.polygon(self.image, BLACK, shape, 2)
-        
+        elif self.obstacle_type == "spinning_laser":
+            # Draw large spinning laser (windmill-like)
+            import math  # Import math for calculations
+            size = self.image.get_width()
+            center = size // 2
+            
+            # Clear and redraw with rotation
+            self.image.fill((0, 0, 0, 0))
+            
+            # Update rotation
+            if hasattr(self, 'rotation_angle'):
+                self.rotation_angle += self.rotation_speed
+            else:
+                self.rotation_angle = 0
+                self.rotation_speed = 0.05
+            
+            # Draw 4 laser blades (windmill style)
+            laser_color = NEON_CYAN  # Bright cyan for underwater laser
+            laser_dark = (0, 200, 255)  # Darker cyan
+            
+            # Calculate blade positions with rotation
+            for i in range(4):
+                angle = self.rotation_angle + (i * math.pi / 2)
+                # Blade extends from center to edge
+                blade_length = size // 2 - 10
+                blade_width = 20
+                
+                # Calculate blade endpoints
+                start_x = center
+                start_y = center
+                end_x = center + blade_length * math.cos(angle)
+                end_y = center + blade_length * math.sin(angle)
+                
+                # Draw blade as a thick line (rectangle)
+                # Create a rotated rectangle for the blade
+                blade_points = [
+                    (start_x + blade_width//2 * math.cos(angle + math.pi/2), 
+                     start_y + blade_width//2 * math.sin(angle + math.pi/2)),
+                    (end_x + blade_width//2 * math.cos(angle + math.pi/2),
+                     end_y + blade_width//2 * math.sin(angle + math.pi/2)),
+                    (end_x + blade_width//2 * math.cos(angle - math.pi/2),
+                     end_y + blade_width//2 * math.sin(angle - math.pi/2)),
+                    (start_x + blade_width//2 * math.cos(angle - math.pi/2),
+                     start_y + blade_width//2 * math.sin(angle - math.pi/2))
+                ]
+                pygame.draw.polygon(self.image, laser_color, blade_points)
+                pygame.draw.polygon(self.image, laser_dark, blade_points, 2)
+            
+            # Center hub
+            pygame.draw.circle(self.image, laser_dark, (center, center), 15)
+            pygame.draw.circle(self.image, laser_color, (center, center), 15, 2)
         elif self.obstacle_type == "city_train":
             # Draw city train
             w, h = self.image.get_width(), self.image.get_height()
@@ -2429,6 +2988,23 @@ class Obstacle(pygame.sprite.Sprite):
                 tooth_x = w//2 - 10 + i * 10
                 pygame.draw.polygon(self.image, (255, 255, 255), 
                                   [(tooth_x, h//2+5), (tooth_x-3, h//2+15), (tooth_x+3, h//2+15)])
+    
+    def update(self, level_height=None):
+        """Update falling meatballs - make them fall and respawn at top throughout entire level."""
+        if self.obstacle_type == "giant_meatball" and hasattr(self, 'falling') and self.falling:
+            # Make meatball fall down
+            self.rect.y += int(self.fall_speed)
+            
+            # If meatball falls below screen, respawn it at the top
+            if level_height and self.rect.top > level_height + 50:
+                # Respawn at random x position across the ENTIRE level width
+                import random
+                # Use stored level width if available, otherwise use a reasonable default
+                level_width = getattr(self, 'level_width', 11200)  # Default to Level 6 width
+                # Respawn across the entire level width (from start to end)
+                self.rect.x = random.randint(150, level_width - 250)  # Random x across entire level width
+                self.rect.y = random.randint(-400, -50)  # Above screen at random height for staggered falling
+                self.fall_speed = 2.5 + random.random() * 1.5  # Random fall speed for variety
 
 
 class Key(pygame.sprite.Sprite):

@@ -34,21 +34,24 @@ class SmartLevelGenerator:
         return self.platforms
     
     def _generate_ground_with_holes(self):
-        """Generate ground platforms with gaps/holes based on difficulty."""
-        # Calculate hole frequency: more holes at higher difficulty
-        # difficulty 0: ~2 holes, difficulty 9: ~12 holes
-        hole_count = 2 + self.difficulty
+        """Generate ground platforms - no gaps/holes (continuous floor)."""
+        # No holes - create continuous ground floor
+        hole_count = 0  # No gaps in the floor
         
-        # Create full ground first
+        # Create full ground first - ensure no gaps by making segments overlap slightly
         ground_segments = []
-        for x in range(0, self.level_width, 200):
-            ground_segments.append({
-                'x': x, 'y': self.level_height - 40, 
-                'width': 200, 'height': 40, 
-                'type': 'ground'
-            })
+        segment_width = 200
+        for x in range(0, self.level_width, segment_width):
+            # Make sure we cover the full width, including the end
+            width = min(segment_width, self.level_width - x)
+            if width > 0:  # Only add if there's space
+                ground_segments.append({
+                    'x': x, 'y': self.level_height - 40, 
+                    'width': width, 'height': 40, 
+                    'type': 'ground'
+                })
         
-        # Remove segments to create holes
+        # Remove segments to create holes (disabled - no holes)
         if hole_count > 0 and len(ground_segments) > 10:
             # Don't put holes at the very start or end
             safe_start = 3  # Keep first 3 segments safe for spawn
@@ -93,12 +96,12 @@ class SmartLevelGenerator:
                             holes_created += 1
                 
                 # Rebuild platforms list without None entries
-                self.platforms = ground_segments[:safe_start]
-                self.platforms.extend([seg for seg in available_segments if seg is not None])
-                self.platforms.extend(ground_segments[-safe_end:])
+                # But since hole_count is 0, we should just use all segments
+                self.platforms = ground_segments
             else:
                 self.platforms = ground_segments
         else:
+            # No holes - use all ground segments
             self.platforms = ground_segments
     
     def get_enemy_stepping_stones(self):
@@ -157,7 +160,8 @@ class SmartLevelGenerator:
                         })
                 
                 # Create the platform
-                x_advance = self.rng.randint(150, 300)
+                # Ensure minimum gap of 60 pixels (player width ~32 + buffer) between platforms
+                x_advance = self.rng.randint(max(150, 60 + 100), 300)  # At least 60px gap + platform width
                 current_x += x_advance
                 
                 width = self.rng.choice([100, 120, 150, 180])

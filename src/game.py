@@ -55,6 +55,18 @@ class Game:
         self.levels = load_levels()
         self.theme = self.levels[self.current_level]["theme"]
 
+        # Initialize Geometry Dash mode attributes
+        self.geometry_dash_mode = False
+        self.player_speed_multiplier = 1.0
+        self.countdown_active = False
+        
+        # Initialize bubble wall mode variables
+        self.bubble_wall_mode = False
+        self.bubble_wall_x = 0
+        self.bubble_wall_speed = 0
+        self.bubble_wall_countdown_timer = 0
+        self.bubble_wall_countdown_active = False
+
         self.all_sprites = pygame.sprite.Group()
         self.platforms = pygame.sprite.Group()
         self.enemies = pygame.sprite.Group()
@@ -154,6 +166,15 @@ class Game:
             self.player_speed_multiplier = 1.0
             self.countdown_active = False
         
+        # Reset underwater mode and bubble wall mode for non-underwater levels
+        if not (self.theme.get("name") == "Kraken Me Up"):
+            self.underwater_mode = False
+            self.bubble_wall_mode = False
+            self.bubble_wall_x = 0
+            self.bubble_wall_speed = 0
+            self.bubble_wall_countdown_timer = 0
+            self.bubble_wall_countdown_active = False
+        
         # Update camera with new level dimensions
         self.camera.set_level_dimensions(level_def["width"], level_def["height"])
 
@@ -182,6 +203,13 @@ class Game:
             )
             self.platforms.add(platform)
             self.all_sprites.add(platform)
+        
+        # Add floor gaps for Level 5 (Boo Who?)
+        if self.theme.get("name") == "Boo Who?":
+            self._add_floor_gaps(level_def, gap_count=4)
+        
+        # Post-process: Ensure all platforms have minimum spacing for player to fit between
+        # This will be done after all platform types are added
         
         # Get enemy stepping stones from generator
         stepping_stone_enemies = generator.get_enemy_stepping_stones()
@@ -214,7 +242,20 @@ class Game:
             enemy_data.append((enemy_info['x'], enemy_info['y'], enemy_info['type']))
         
         # Then add regular enemies
-        enemy_kinds = ["basic", "fast", "jumper", "big", "double_hit", "air_bat", "air_dragon"]
+        # Basic enemy set used across all levels
+        basic_enemy_kinds = ["basic", "fast", "jumper", "big", "double_hit", "air_dragon"]
+        
+        # Level-specific enemy sets
+        if self.theme.get("name") == "Pasta La Vista":
+            # Level 6: Only meatball enemies (angry meatballs)
+            enemy_kinds = ["meatball"]
+        elif self.theme.get("name") == "Boo Who?":
+            # Level 5: Include air_bat only in Boo Who?
+            enemy_kinds = basic_enemy_kinds + ["air_bat"]
+        else:
+            # All other levels: Use basic enemy set
+            enemy_kinds = basic_enemy_kinds
+        
         enemy_count = 8 + level_def["difficulty"] * 2
         if self.theme.get("name") == "Smelted Dreams":
             enemy_count += 6  # harder lava level
@@ -227,19 +268,17 @@ class Game:
         # Make ice level extremely hard with no safe ground
         elif self.theme.get("name") == "Frost and Furious":
             enemy_count += 15  # Lots of sky enemies since no safe ground
-        # Make computer level challenging with virus worms and special mechanics
+        # Skip enemy count for Level 7 (404: Floor Not Found) - handled in _create_geometry_dash_level
         elif self.theme.get("name") == "404: Floor Not Found":
-            enemy_count += 8  # Computer virus worms for challenge
+            enemy_count = 0  # No enemies from normal generation - only worms from _create_geometry_dash_level
         # Make pasta level very hard with lots of ground enemies
         elif self.theme.get("name") == "Pasta La Vista":
-            enemy_count += 12  # Lots of ground enemies for challenge
-        # Make city level challenging with urban enemies
-        elif self.theme.get("name") == "Concrete Jungle":
-            enemy_count += 10  # City enemies for challenge
-        # Special underwater maze level - different mechanics
+            enemy_count = (enemy_count + 12) * 2  # Multiply by 2 (reduced from 4)
+        # Level 8 (Concrete Jungle) was removed
+        # Special underwater maze level - completely different mechanics
         elif self.theme.get("name") == "Kraken Me Up":
             # This level has completely different mechanics - handled separately
-            self._create_underwater_maze()
+            self._create_underwater_maze_v2()
             return  # Skip normal level generation
         # Ultimate challenge level - Neon Night
         elif self.theme.get("name") == "Neon Night":
@@ -257,27 +296,32 @@ class Game:
                 air_chance = 0.7  # Most enemies are ghosts in the sky
             elif self.theme.get("name") == "Frost and Furious":
                 air_chance = 0.8  # Most enemies are in the sky (no safe ground!)
+            elif self.theme.get("name") == "Pasta La Vista":
+                air_chance = 0.3  # Half as many sky enemies (was 0.6, now 0.3 = half)
             if rng.random() < air_chance:
                 y = rng.randint(100, 300)  # Higher up for air enemies
             else:
                 y = rng.randint(240, 460)  # Normal ground level
             
-            # Weighted selection for enemy types
-            if self.theme.get("name") == "Boo Who?":
+            # Weighted selection for enemy types (weights must match enemy_kinds length)
+            if self.theme.get("name") == "Pasta La Vista":
+                # Level 6: Only meatball enemies (angry meatballs)
+                # enemy_kinds = ["meatball"]
+                weights = [1]  # Only meatball enemies (1 weight for 1 enemy type)
+            elif self.theme.get("name") == "Boo Who?":
                 # Prefer air enemies (ghosts) for ghost level
-                weights = [1, 1, 1, 1, 1, 8, 6]  # Favor air_bat and air_dragon
+                # enemy_kinds = ["basic", "fast", "jumper", "big", "double_hit", "air_dragon", "air_bat"]
+                weights = [1, 1, 1, 1, 1, 6, 8]  # Favor air_bat and air_dragon (7 weights for 7 enemy types)
             elif self.theme.get("name") == "404: Floor Not Found":
-                # Prefer ground enemies (virus worms) for computer level
-                weights = [6, 5, 4, 3, 2, 1, 1]  # Favor basic, fast, jumper, big enemies
-            elif self.theme.get("name") == "Pasta La Vista":
-                # Prefer ground enemies for pasta level challenge
-                weights = [8, 7, 6, 5, 4, 1, 1]  # Strongly favor ground enemies
-            elif self.theme.get("name") == "Concrete Jungle":
-                # Prefer air enemies (birds) for city level
-                weights = [3, 3, 3, 3, 3, 8, 6]  # Favor air_bat and air_dragon (birds)
+                # Skip - Level 7 uses only worm enemies from _create_geometry_dash_level
+                # This code shouldn't be reached due to early return, but set weights just in case
+                weights = []  # Empty weights - no enemies from normal generation
+            # Level 8 (Concrete Jungle) was removed
             else:
+                # Basic enemy set for all other levels
+                # enemy_kinds = ["basic", "fast", "jumper", "big", "double_hit", "air_dragon"]
                 weights = [4, 3 + level_def["difficulty"], 3, 1 + level_def["difficulty"]//2, 
-                         2 + level_def["difficulty"], 1 + level_def["difficulty"]//3, 1 + level_def["difficulty"]//4]
+                         2 + level_def["difficulty"], 1 + level_def["difficulty"]//3]  # 6 weights for 6 enemy types
             etype = rng.choices(enemy_kinds, weights=weights)[0]
             enemy_data.append((x, y, etype))
         
@@ -341,22 +385,30 @@ class Game:
                 y = rng.randint(260, 420)
                 powerup_positions.append((x, y))
         
-        # Create exactly one rainbow star on odd levels (1, 3, 5, 7, 9)
-        if self.current_level % 2 == 0:  # Odd levels (0-indexed)
+        # Create exactly one rainbow star on levels 1, 3, 5, 7, 9 (0-indexed: 0, 2, 4, 6, 8)
+        # Skip rainbow stars for Level 7 (404: Floor Not Found) - it has special mechanics
+        if self.current_level in [0, 2, 4, 6, 8] and self.theme.get("name") != "404: Floor Not Found":
             # Choose a random position for the rainbow star
-            star_x, star_y = random.choice(powerup_positions)
-            rainbow_star = Powerup(star_x, star_y, "rainbow_star")
-            self.powerups.add(rainbow_star)
-            self.all_sprites.add(rainbow_star)
-            
-            # Create regular coins for all other positions
-            for x, y in powerup_positions:
-                if (x, y) != (star_x, star_y):  # Skip the rainbow star position
+            if powerup_positions:  # Make sure we have positions
+                star_x, star_y = random.choice(powerup_positions)
+                rainbow_star = Powerup(star_x, star_y, "rainbow_star")
+                self.powerups.add(rainbow_star)
+                self.all_sprites.add(rainbow_star)
+                
+                # Create regular coins for all other positions
+                for x, y in powerup_positions:
+                    if (x, y) != (star_x, star_y):  # Skip the rainbow star position
+                        coin = Powerup(x, y, "coin")
+                        self.powerups.add(coin)
+                        self.all_sprites.add(coin)
+            else:
+                # Fallback: create coins if no powerup positions
+                for x, y in powerup_positions:
                     coin = Powerup(x, y, "coin")
                     self.powerups.add(coin)
                     self.all_sprites.add(coin)
         else:
-            # On even levels, create only regular coins
+            # On other levels, create only regular coins
             for x, y in powerup_positions:
                 coin = Powerup(x, y, "coin")
                 self.powerups.add(coin)
@@ -534,62 +586,74 @@ class Game:
             self._create_geometry_dash_level()
             return  # Skip normal enemy generation for Geometry Dash level
         
-        # Add pasta slides and moving platforms for Level 7 (Pasta La Vista)
+        # Add pasta slides and moving platforms for Level 6 (Pasta La Vista)
         if self.theme.get("name") == "Pasta La Vista":
             pasta_rng = random.Random(6666 + self.current_level)
             
-            # Add pasta slides (sloped platforms)
-            slide_count = 8 + level_def["difficulty"] * 2
+            # Player width is ~32 pixels (sprite) with 70% hitbox = ~22 pixels
+            # Minimum gap needed: player width + buffer = 32 + 20 = 52 pixels minimum
+            # Use 60 pixels as safe minimum gap
+            MIN_PLATFORM_GAP = 60  # Minimum horizontal gap between platforms for player to fit
+            placed_pasta_platforms = []  # Track placed platforms for spacing
+            
+            # Add pasta slides (sloped platforms) - doubled
+            slide_count = (8 + level_def["difficulty"] * 2) * 2  # Twice as many
             for _ in range(slide_count):
-                x = pasta_rng.randint(200, level_def["width"] - 300)
-                y = pasta_rng.randint(300, level_def["height"] - 200)
-                # Create pasta slide platform
-                pasta_slide = Platform(x, y, 150, 40, platform_type="pasta_slide", theme=self.theme)
-                self.platforms.add(pasta_slide)
-                self.all_sprites.add(pasta_slide)
+                attempts = 0
+                placed = False
+                while attempts < 50 and not placed:
+                    attempts += 1
+                    x = pasta_rng.randint(200, level_def["width"] - 300)
+                    y = pasta_rng.randint(300, level_def["height"] - 200)
+                    
+                    # Check spacing from other platforms
+                    too_close = False
+                    for px, py, pw in placed_pasta_platforms:
+                        # Check horizontal distance
+                        horizontal_gap = min(abs(x - px), abs(x + 150 - px), abs(x - (px + pw)))
+                        if horizontal_gap < MIN_PLATFORM_GAP:
+                            too_close = True
+                            break
+                    
+                    if not too_close:
+                        # Create pasta slide platform
+                        pasta_slide = Platform(x, y, 150, 40, platform_type="pasta_slide", theme=self.theme)
+                        self.platforms.add(pasta_slide)
+                        self.all_sprites.add(pasta_slide)
+                        placed_pasta_platforms.append((x, y, 150))
+                        placed = True
             
-            # Add vertically moving platforms to help escape meatballs
-            moving_count = 6 + level_def["difficulty"] * 2
+            # Add vertically moving platforms to help escape meatballs - doubled
+            moving_count = (6 + level_def["difficulty"] * 2) * 2  # Twice as many
             for _ in range(moving_count):
-                x = pasta_rng.randint(300, level_def["width"] - 200)
-                y = pasta_rng.randint(250, level_def["height"] - 150)
-                # Create vertically moving platforms
-                moving_platform = Platform(x, y, 120, 30, platform_type="pasta_moving", theme=self.theme)
-                self.platforms.add(moving_platform)
-                self.all_sprites.add(moving_platform)
+                attempts = 0
+                placed = False
+                while attempts < 50 and not placed:
+                    attempts += 1
+                    x = pasta_rng.randint(300, level_def["width"] - 200)
+                    y = pasta_rng.randint(250, level_def["height"] - 150)
+                    
+                    # Check spacing from other platforms
+                    too_close = False
+                    for px, py, pw in placed_pasta_platforms:
+                        # Check horizontal distance
+                        horizontal_gap = min(abs(x - px), abs(x + 120 - px), abs(x - (px + pw)))
+                        if horizontal_gap < MIN_PLATFORM_GAP:
+                            too_close = True
+                            break
+                    
+                    if not too_close:
+                        # Create vertically moving platforms
+                        moving_platform = Platform(x, y, 120, 30, platform_type="pasta_moving", theme=self.theme)
+                        self.platforms.add(moving_platform)
+                        self.all_sprites.add(moving_platform)
+                        placed_pasta_platforms.append((x, y, 120))
+                        placed = True
             
-            # Add ground gaps (no platforms in certain areas)
-            gap_count = 10 + level_def["difficulty"] * 3
-            for _ in range(gap_count):
-                x = pasta_rng.randint(100, level_def["width"] - 200)
-                y = level_def["height"] - 100  # At ground level
-                gap_width = pasta_rng.randint(80, 150)
-                # Create gap by removing ground in this area
-                # This will be handled by modifying the ground platform generation
+            # No ground gaps - continuous floor
+            # (Ground gaps removed - player wants continuous floor)
         
-        # Add city-themed obstacles and platforms for Level 8 (Concrete Jungle)
-        if self.theme.get("name") == "Concrete Jungle":
-            city_rng = random.Random(8888 + self.current_level)
-            
-            # Add concrete platforms (building ledges)
-            concrete_count = 10 + level_def["difficulty"] * 2
-            for _ in range(concrete_count):
-                x = city_rng.randint(200, level_def["width"] - 200)
-                y = city_rng.randint(200, level_def["height"] - 200)
-                # Create concrete platform
-                concrete_platform = Platform(x, y, 120, 25, platform_type="concrete_platform", theme=self.theme)
-                self.platforms.add(concrete_platform)
-                self.all_sprites.add(concrete_platform)
-            
-            # Add fire escapes (ladder-like platforms)
-            fire_escape_count = 6 + level_def["difficulty"]
-            for _ in range(fire_escape_count):
-                x = city_rng.randint(300, level_def["width"] - 300)
-                y = city_rng.randint(300, level_def["height"] - 300)
-                # Create fire escape platform
-                fire_escape = Platform(x, y, 80, 20, platform_type="fire_escape", theme=self.theme)
-                self.platforms.add(fire_escape)
-                self.all_sprites.add(fire_escape)
+        # Level 8 (Concrete Jungle) was removed - now only 9 levels
         
         # Add 2 firewalls with keys for Level 7 (404: Floor Not Found)
         if self.theme.get("name") == "404: Floor Not Found":
@@ -620,33 +684,46 @@ class Game:
                 self.enemies.add(key_enemy)
                 self.all_sprites.add(key_enemy)
         
-        # Add giant rolling meatballs for Level 7 (Pasta La Vista)
+        # Add giant falling meatballs AND ground meatballs for Level 6 (Pasta La Vista) - raining meatballs + ground obstacles!
         if self.theme.get("name") == "Pasta La Vista":
             meatball_rng = random.Random(7777 + self.current_level)
-            meatball_count = 3 + level_def["difficulty"]  # 3-6 giant meatballs
+            falling_meatball_count = (3 + level_def["difficulty"]) * 4  # 4x more falling meatballs!
+            ground_meatball_count = 3 + level_def["difficulty"]  # Ground meatballs (evil meatballs on land)
             
-            for _ in range(meatball_count):
-                x = meatball_rng.randint(100, level_def["width"] - 200)
-                y = level_def["height"] - 150  # At ground level
-                # Create giant rolling meatball
+            level_width = level_def["width"]
+            
+            # Add falling meatballs from sky
+            spacing = level_width // (falling_meatball_count + 1)  # Even spacing across level
+            for i in range(falling_meatball_count):
+                # Distribute evenly across the entire level width
+                base_x = spacing * (i + 1)
+                x = base_x + meatball_rng.randint(-spacing//3, spacing//3)  # Add variation but keep coverage
+                x = max(150, min(level_width - 250, x))  # Keep within safe bounds
+                y = meatball_rng.randint(-400, -50)  # Start above the screen at different heights for staggered falling
+                # Create giant falling meatball that will rain down
                 meatball = Obstacle(x, y, "giant_meatball")
+                meatball.falling = True  # Mark as falling meatball
+                meatball.fall_speed = 2.5 + random.random() * 1.5  # Random fall speed
+                meatball.level_width = level_width  # Store level width for respawning across entire level
                 self.obstacles.add(meatball)
                 self.all_sprites.add(meatball)
         
-        # Add trains for Level 8 (Concrete Jungle)
-        if self.theme.get("name") == "Concrete Jungle":
-            train_rng = random.Random(9999 + self.current_level)
-            train_count = 2 + level_def["difficulty"]  # 2-5 trains
-            
-            for _ in range(train_count):
-                x = train_rng.randint(50, level_def["width"] - 300)
-                y = level_def["height"] - 180  # Train tracks at ground level
-                # Create train obstacle
-                train = Obstacle(x, y, "city_train")
-                self.obstacles.add(train)
-                self.all_sprites.add(train)
+            # Add ground meatballs (evil meatballs on land) - these don't fall, they're obstacles on the ground
+            for _ in range(ground_meatball_count):
+                x = meatball_rng.randint(200, level_width - 300)
+                y = level_def["height"] - 150  # At ground level
+                # Create giant ground meatball obstacle (not falling)
+                ground_meatball = Obstacle(x, y, "giant_meatball")
+                ground_meatball.falling = False  # Not falling, just a ground obstacle
+                self.obstacles.add(ground_meatball)
+                self.all_sprites.add(ground_meatball)
         
-        # Add ultimate challenge features for Level 10 (Neon Night)
+        # Post-process all platforms to ensure minimum spacing (after all platforms are added)
+        self._ensure_platform_spacing(level_def)
+        
+        # Level 8 (Concrete Jungle) was removed - trains code removed
+        
+        # Add ultimate challenge features for Level 9 (Neon Night, was Level 10)
         if self.theme.get("name") == "Neon Night":
             neon_rng = random.Random(10101 + self.current_level)
             
@@ -737,12 +814,7 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F11:
                     self.toggle_fullscreen()
-                # Handle global ESC first for consistent quitting from menus
-                elif event.key == pygame.K_ESCAPE:
-                    if self.state == GameState.PLAYING:
-                        self.state = GameState.MENU
-                    else:
-                        return False
+                # Handle state-specific keys first, then global ESC
                 elif self.state == GameState.LOADING:
                     # Allow skip loading to menu
                     if event.key in (pygame.K_SPACE, pygame.K_RETURN):
@@ -751,12 +823,13 @@ class Game:
                     if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
                         self.start_game()
                     elif event.key == pygame.K_l:
+                        # K_l works for both uppercase and lowercase L in pygame
                         self.state = GameState.LEVEL_SELECT
                 elif self.state == GameState.LEVEL_COMPLETE:
                     if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
-                        self.continue_to_next_level()
+                            self.continue_to_next_level()
                     elif event.key == pygame.K_m:
-                        self.state = GameState.MENU
+                            self.state = GameState.MENU
                 elif self.state == GameState.LEVEL_SELECT:
                     if event.key == pygame.K_UP:
                         self.current_level = (self.current_level - 1) % len(self.levels)
@@ -766,10 +839,21 @@ class Game:
                         self.start_game()
                     elif event.key == pygame.K_m or event.key == pygame.K_ESCAPE:
                         self.state = GameState.MENU
+                    # Also allow L key to go back to menu from level select
+                    elif event.key == pygame.K_l:
+                        self.state = GameState.MENU
+                elif self.state == GameState.PLAYING:
+                    # ESC key to exit level and return to main menu
+                    if event.key == pygame.K_ESCAPE:
+                        self.state = GameState.MENU
                 elif self.state == GameState.GAME_OVER:
                     if event.key == pygame.K_r or event.key == pygame.K_SPACE:
                         self.restart_game()
                     elif event.key == pygame.K_m:
+                        self.state = GameState.MENU
+                elif self.state == GameState.BONUS_ROOM:
+                    # ESC key to exit bonus room and return to main menu
+                    if event.key == pygame.K_ESCAPE:
                         self.state = GameState.MENU
         return True
     
@@ -992,27 +1076,31 @@ class Game:
         delattr(self, 'saved_level_state')
     
     def _create_geometry_dash_level(self):
-        """Create a multi-floor level with staircases, requiring both horizontal and vertical movement."""
+        """Create a multi-floor level with gaps, spikes, and enemies. Player spawns in middle floor."""
         level_def = self.levels[self.current_level]
         
-        # Clear existing enemies for speedrun level
+        # Clear existing enemies - we'll add specific ones for this level
         self.enemies.empty()
         
-        # Make level extra long for speedrun
-        level_width = level_def["width"] * 2
+        # Get original base width (before any modifications)
+        # Level 7 base width is 10400px, was originally 2x (20800px)
+        # Now make it 40% shorter: 20800 * 0.6 = 12480px (or base * 1.2)
+        original_base_width = level_def["width"]  # This is the base width (10400px)
+        level_width = int(original_base_width * 1.2)  # 40% shorter than 2x (1.2x instead of 2x = 12480px)
         level_def["width"] = level_width
         
         # Update level dimensions for enemies to work properly
         set_level_dimensions(level_width, level_def["height"])
         self.camera.set_level_dimensions(level_width, level_def["height"])
         
-        from constants import SAFE_JUMP_HEIGHT
+        from constants import SAFE_JUMP_HEIGHT, PLAYER_SPEED
         spawn_safe_zone = 400  # Safe spawn area
         
-        # Define multiple floors at different heights
+        # Define 3 floors stacked on top of one another
         floor_height = 40  # Platform thickness
-        floor_spacing = 180  # Vertical spacing between floors
-        num_floors = 4  # Number of horizontal floors
+        # Floor spacing must be within jump range - use SAFE_JUMP_HEIGHT - 20 for safety margin
+        floor_spacing = SAFE_JUMP_HEIGHT - 20  # Vertical spacing between floors (within jump range, ~140px)
+        num_floors = 3  # Three floors
         
         # Calculate floor Y positions (from bottom to top)
         ground_y = level_def["height"] - floor_height
@@ -1021,160 +1109,775 @@ class Game:
             floor_y = ground_y - (i * floor_spacing)
             floor_ys.append(floor_y)
         
-        # Create horizontal floor platforms for each floor
+        # Middle floor is where player spawns (index 1)
+        middle_floor_y = floor_ys[1]
+        
+        # Create horizontal floor platforms with lots of gaps for each floor
         platforms_list = []
-        for floor_y in floor_ys:
+        gap_rng = random.Random(7007 + self.current_level)
+        
+        for floor_idx, floor_y in enumerate(floor_ys):
             floor_platforms = []
-            # Create continuous floor segments
-            for x in range(0, level_width, 200):
-                floor_platform = Platform(x, floor_y, 200, floor_height, platform_type="ground", theme=self.theme)
-                floor_platforms.append(floor_platform)
-                self.platforms.add(floor_platform)
-                self.all_sprites.add(floor_platform)
+            # Create floor segments with gaps
+            segment_width = 200
+            gap_width = 150  # Width of gaps (jumpable)
+            
+            x = 0
+            while x < level_width:
+                # Decide if this segment should be a gap or platform
+                # Create lots of gaps - about 40% of segments are gaps
+                if gap_rng.random() < 0.4 and x > spawn_safe_zone and x < level_width - 400:
+                    # This is a gap - skip it
+                    x += gap_width
+                else:
+                    # Create platform segment
+                    remaining_width = min(segment_width, level_width - x)
+                    if remaining_width > 0:
+                        floor_platform = Platform(x, floor_y, remaining_width, floor_height, platform_type="ground", theme=self.theme)
+                        floor_platforms.append(floor_platform)
+                        self.platforms.add(floor_platform)
+                        self.all_sprites.add(floor_platform)
+                    x += segment_width
             platforms_list.append(floor_platforms)
         
-        # Create staircases connecting floors
-        # Staircases are diagonal platforms that allow vertical movement
-        staircase_rng = random.Random(6006 + self.current_level)
-        staircase_spacing = 1200  # Distance between staircases
-        staircase_width = 40  # Width of each step
-        step_height = 30  # Height of each step
-        steps_per_staircase = 6  # Number of steps in each staircase
+        # Add platforms to bottom floor (floor 1) to allow moving up
+        # Add floating platforms very close to bottom floor for easy vertical movement
+        bottom_floor_y = floor_ys[0]  # Bottom floor
+        platform_rng = random.Random(9009 + self.current_level)
         
-        staircases = []
-        for x in range(spawn_safe_zone + 500, level_width - 800, staircase_spacing):
-            # Randomly choose which floors to connect
-            start_floor = staircase_rng.randint(0, num_floors - 2)
-            end_floor = start_floor + 1  # Always go up one floor
-            
-            start_y = floor_ys[start_floor]
-            end_y = floor_ys[end_floor]
-            
-            # Create diagonal staircase
-            for step in range(steps_per_staircase):
-                step_x = x + (step * (staircase_width + 10))
-                step_y = start_y - (step * step_height)
-                
-                # Make sure we don't go beyond the end floor
-                if step_y <= end_y:
-                    step_y = end_y
-                
-                step_platform = Platform(step_x, step_y, staircase_width, floor_height, 
-                                       platform_type="ground", theme=self.theme)
-                self.platforms.add(step_platform)
-                self.all_sprites.add(step_platform)
-                staircases.append((step_x, step_y))
-            
-            # Also create reverse staircases (going down) occasionally
-            if staircase_rng.random() < 0.4 and start_floor > 0:
-                start_y = floor_ys[start_floor]
-                end_y = floor_ys[start_floor - 1]
-                
-                for step in range(steps_per_staircase):
-                    step_x = x + 400 + (step * (staircase_width + 10))
-                    step_y = start_y + (step * step_height)
-                    
-                    if step_y >= end_y:
-                        step_y = end_y
-                    
-                    step_platform = Platform(step_x, step_y, staircase_width, floor_height,
-                                           platform_type="ground", theme=self.theme)
-                    self.platforms.add(step_platform)
-                    self.all_sprites.add(step_platform)
+        # Add platforms very close to bottom floor (within easy jump range)
+        # Focus on platforms within 100px of bottom floor
+        close_platform_count = 8  # Platforms very close (60-100px above)
+        medium_platform_count = 6  # Platforms medium distance (100-180px above)
         
-        # Add spikes on both floor and ceiling of each floor
+        # Very close platforms (60-100px above bottom floor)
+        for i in range(close_platform_count):
+            platform_x = platform_rng.randint(spawn_safe_zone + 200, level_width - 400)
+            # Y position: 60-100px above bottom floor
+            y_offset = 60 + (i * 5)  # Start at 60px, increase by 5px each
+            platform_y = bottom_floor_y - y_offset
+            
+            if platform_y >= bottom_floor_y - 100:
+                platform_width = platform_rng.randint(160, 240)
+                platform_height = 20
+                
+                intermediate_platform = Platform(
+                    platform_x, platform_y, platform_width, platform_height,
+                    platform_type="normal", theme=self.theme
+                )
+                self.platforms.add(intermediate_platform)
+                self.all_sprites.add(intermediate_platform)
+        
+        # Medium distance platforms (100-180px above bottom floor)
+        for i in range(medium_platform_count):
+            platform_x = platform_rng.randint(spawn_safe_zone + 200, level_width - 400)
+            # Y position: 100-180px above bottom floor
+            y_offset = 100 + (i * 13)  # Start at 100px, increase by 13px each
+            platform_y = bottom_floor_y - y_offset
+            
+            if platform_y >= bottom_floor_y - 180:
+                platform_width = platform_rng.randint(150, 220)
+                platform_height = 20
+                
+                intermediate_platform = Platform(
+                    platform_x, platform_y, platform_width, platform_height,
+                    platform_type="normal", theme=self.theme
+                )
+                self.platforms.add(intermediate_platform)
+                self.all_sprites.add(intermediate_platform)
+        
+        # Add additional platforms between bottom and middle floors for better path
+        middle_floor_y = floor_ys[1]  # Middle floor
+        floor_gap = bottom_floor_y - middle_floor_y  # Gap between floors
+        platform_spacing = SAFE_JUMP_HEIGHT - 20  # Spacing between platforms (within jump range)
+        num_platform_layers = max(4, int(floor_gap / platform_spacing))  # Number of platform layers needed
+        
+        # Add platforms in layers between bottom and middle floors
+        for layer in range(num_platform_layers):
+            # Y position for this layer
+            y_offset = 80 + (layer * platform_spacing)  # Start 80px above bottom, then spaced
+            platform_y = bottom_floor_y - y_offset
+            
+            # Make sure we don't go above middle floor
+            if platform_y <= middle_floor_y - 40:
+                break
+            
+            # Add 3-4 platforms per layer for good coverage
+            platforms_per_layer = platform_rng.randint(3, 4)
+            for p in range(platforms_per_layer):
+                platform_x = platform_rng.randint(spawn_safe_zone + 200, level_width - 400)
+                platform_width = platform_rng.randint(160, 240)
+                platform_height = 20
+                
+                intermediate_platform = Platform(
+                    platform_x, platform_y, platform_width, platform_height,
+                    platform_type="normal", theme=self.theme
+                )
+                self.platforms.add(intermediate_platform)
+                self.all_sprites.add(intermediate_platform)
+        
+        # Also add platforms between middle and top floors to ensure all vertical jumps are possible
+        top_floor_y = floor_ys[2]  # Top floor
+        middle_to_top_gap = middle_floor_y - top_floor_y
+        
+        if middle_to_top_gap > SAFE_JUMP_HEIGHT - 40:
+            # Need intermediate platforms between middle and top floors
+            num_middle_layers = max(1, int(middle_to_top_gap / platform_spacing))
+            for layer in range(num_middle_layers):
+                y_offset = 60 + (layer * platform_spacing)
+                platform_y = middle_floor_y - y_offset
+                
+                if platform_y <= top_floor_y - 40:
+                    break
+                
+                # Verify this platform is within jump range
+                if layer > 0:
+                    prev_y = middle_floor_y - (60 + ((layer - 1) * platform_spacing))
+                    vertical_gap = prev_y - platform_y
+                    if vertical_gap > SAFE_JUMP_HEIGHT:
+                        # Adjust to be within jump range
+                        platform_y = prev_y - SAFE_JUMP_HEIGHT + 10
+                
+                # Add 2-3 platforms per layer
+                platforms_per_layer = platform_rng.randint(2, 3)
+                for p in range(platforms_per_layer):
+                    platform_x = platform_rng.randint(spawn_safe_zone + 200, level_width - 400)
+                    platform_width = platform_rng.randint(160, 240)
+                    platform_height = 20
+                    
+                    intermediate_platform = Platform(
+                        platform_x, platform_y, platform_width, platform_height,
+                        platform_type="normal", theme=self.theme
+                    )
+                    self.platforms.add(intermediate_platform)
+                    self.all_sprites.add(intermediate_platform)
+        
+        # Add green spikes on both floor and ceiling of each floor
         spike_positions = []
         spike_rng = random.Random(7007 + self.current_level)
         
-        # Floor spikes (on top of each floor)
+        # Floor spikes (on top of each floor) - match floor color, jumpable groupings
+        from constants import SAFE_JUMP_HEIGHT
         for floor_y in floor_ys:
-            spike_x = spawn_safe_zone
-            pattern_index = 0
-            
-            # More varied spike patterns
-            patterns = [
-                [(0, 0)],  # Single
-                [(0, 0), (60, 0)],  # Double
-                [(0, 0), (60, 0), (120, 0)],  # Triple
-                [(0, 0), (100, 0)],  # Wide double
-                [(0, 0), (40, 0), (80, 0), (120, 0)],  # Quad
-            ]
-            
-            while spike_x < level_width - 200:
-                pattern = patterns[pattern_index % len(patterns)]
-                
-                for offset_x, offset_y in pattern:
-                    if spike_x + offset_x < level_width - 100:
-                        spike_y = floor_y - 30 + offset_y  # Spikes on floor
-                        spike_positions.append((spike_x + offset_x, spike_y))
-                
-                gap_size = 180 + spike_rng.randint(0, 80)
-                spike_x += max([p[0] for p in pattern]) + 60 + gap_size
-                pattern_index += 1
+            spike_x = spawn_safe_zone + 200
+        pattern_index = 0
         
-        # Ceiling spikes (hanging from top of each floor)
-        # Spikes are 24 pixels tall with point at y=4, so position at ceiling_y - 4 to hang down
+            # Jumpable spike patterns - only single and double spikes (no triple spikes)
+            # Triple spikes are too hard to jump over, so we'll use only single and double
+        patterns = [
+                [(0, 0)],  # Single spike
+                [(0, 0), (60, 0)],  # Double spike (60px wide - jumpable)
+        ]
+        
+        while spike_x < level_width - 200:
+                # Place spikes with reduced frequency (25% chance - even less frequent)
+                if spike_rng.random() < 0.25:  # 25% chance to place spikes here
+                    # Prefer single spikes (70% chance) over double spikes (30% chance)
+                    if spike_rng.random() < 0.7:
+                        pattern = [(0, 0)]  # Single spike
+                    else:
+                        pattern = [(0, 0), (60, 0)]  # Double spike
+                    
+                    for offset_x, offset_y in pattern:
+                        if spike_x + offset_x < level_width - 100:
+                            spike_y = floor_y - 30 + offset_y  # Spikes on floor
+                            spike_positions.append((spike_x + offset_x, spike_y))
+                    
+                    # After placing a spike group, ensure next placement is jumpable distance away
+                    max_pattern_width = max([p[0] for p in pattern]) if pattern else 0
+                    # Ensure minimum gap of 200px for jumpability (even wider gaps)
+                    gap_size = max(200, max_pattern_width + 200)  # At least 200px gap after pattern
+                else:
+                    # No spikes here, normal gap
+                    gap_size = 350 + spike_rng.randint(0, 250)  # Wider gaps between spike placements
+                
+                spike_x += gap_size
+        
+        # Ceiling spikes (hanging from ceiling above each floor) - match floor color, jumpable groupings
         for i, floor_y in enumerate(floor_ys):
             if i < num_floors - 1:  # Don't add ceiling spikes to top floor
                 ceiling_y = floor_y - floor_spacing  # Position above this floor (bottom of ceiling)
                 spike_x = spawn_safe_zone + 300
                 
                 while spike_x < level_width - 200:
-                    # Place ceiling spikes in clusters
-                    cluster_size = spike_rng.randint(2, 5)
-                    for j in range(cluster_size):
-                        if spike_x + (j * 50) < level_width - 100:
-                            # Position so spike point is at ceiling_y (hanging down)
-                            spike_positions.append((spike_x + (j * 50), ceiling_y - 4))
+                    # Place ceiling spikes with reduced frequency (20% chance, even less frequent)
+                    if spike_rng.random() < 0.2:  # 20% chance to place spikes here
+                        # Only single spikes on ceiling (easier to pass under)
+                        cluster_size = 1  # Only single spikes on ceiling
+                        for j in range(cluster_size):
+                            if spike_x + (j * 50) < level_width - 100:
+                                # Position so spike point is at ceiling_y (hanging down)
+                                spike_positions.append((spike_x + (j * 50), ceiling_y - 4))
+                        
+                        # Ensure next placement is jumpable distance away
+                        gap_size = max(200, 200)  # At least 200px gap after ceiling spike
+                    else:
+                        # No spikes here, normal gap
+                        gap_size = 350 + spike_rng.randint(0, 250)  # Wider gaps
                     
-                    gap_size = 200 + spike_rng.randint(0, 150)
-                    spike_x += (cluster_size * 50) + gap_size
+                    spike_x += gap_size
         
-        # Create all spike obstacles
+        # Create all spike obstacles (will match floor color for Level 7)
+        # Filter out any triple spike patterns that might have been created
+        filtered_spike_positions = []
+        spike_positions.sort(key=lambda pos: (pos[1], pos[0]))  # Sort by Y, then X
+        
+        # Group spikes by floor (Y position)
+        spikes_by_floor = {}
         for x, y in spike_positions:
+            if y not in spikes_by_floor:
+                spikes_by_floor[y] = []
+            spikes_by_floor[y].append(x)
+        
+        # Filter out triple spikes - ensure no 3 spikes within 150px
+        for floor_y, spike_xs in spikes_by_floor.items():
+            spike_xs.sort()
+            filtered_floor_spikes = []
+            i = 0
+            
+            while i < len(spike_xs):
+                # Check if this spike is part of a triple pattern
+                if i + 2 < len(spike_xs):
+                    spike1 = spike_xs[i]
+                    spike2 = spike_xs[i + 1]
+                    spike3 = spike_xs[i + 2]
+                    # If 3 spikes are within 150px, keep only first (remove middle and third)
+                    if spike3 - spike1 <= 150:
+                        # Keep first spike only, skip middle and third
+                        filtered_floor_spikes.append(spike1)
+                        i += 3  # Skip all three spikes
+                        continue
+                
+                # Keep this spike (not part of triple pattern)
+                filtered_floor_spikes.append(spike_xs[i])
+                i += 1
+            
+            # Add filtered spikes for this floor
+            for x in filtered_floor_spikes:
+                filtered_spike_positions.append((x, floor_y))
+        
+        # Create obstacles from filtered positions
+        for x, y in filtered_spike_positions:
             spike_obstacle = Obstacle(x, y, "spike")
+            # Mark as Level 7 spike (will match floor color, not green)
+            spike_obstacle.is_level7_spike = True
             self.obstacles.add(spike_obstacle)
             self.all_sprites.add(spike_obstacle)
         
-        # Add more enemies distributed across all floors
-        enemy_rng = random.Random(8008 + self.current_level)
-        enemy_count = 35  # Increased from 15 to 35
+        # Mark all existing spikes for Level 7 (in case any were created elsewhere)
+        for obstacle in self.obstacles:
+            if hasattr(obstacle, 'obstacle_type') and obstacle.obstacle_type == 'spike':
+                obstacle.is_level7_spike = True
         
-        for i in range(enemy_count):
-            # Distribute enemies across all floors
-            floor_index = enemy_rng.randint(0, num_floors - 1)
+        # Add worm enemies distributed evenly across all floors - Level 7 specific
+        enemy_rng = random.Random(8008 + self.current_level)
+        enemy_count = 30  # Worm enemies for Level 7
+        
+        # Ensure worms spawn on all floors - distribute evenly
+        worms_per_floor = enemy_count // num_floors  # 10 worms per floor
+        extra_worms = enemy_count % num_floors  # 0 extra worms (30 / 3 = 10 exactly)
+        
+        enemies_added = 0
+        
+        # Spawn worms on each floor
+        for floor_index in range(num_floors):
             floor_y = floor_ys[floor_index]
             
-            x = enemy_rng.randint(spawn_safe_zone + 200, level_width - 300)
-            y = floor_y - 50  # Slightly above the floor
+            # Calculate how many worms for this floor
+            worms_for_this_floor = worms_per_floor
+            if floor_index < extra_worms:  # Distribute extra worms to first floors
+                worms_for_this_floor += 1
             
-            # Vary enemy types
-            enemy_type = enemy_rng.choice(["basic", "fast", "jumper", "big"])
-            enemy = Enemy(x, y, enemy_type, theme=self.theme)
-            self.enemies.add(enemy)
-            self.all_sprites.add(enemy)
+            # Find platforms on this floor to place enemies on
+            floor_platforms = [p for p in platforms_list[floor_index] if p.rect.y == floor_y and p.rect.width >= 100]
+            
+            if not floor_platforms:
+                # If no suitable platforms, try to find any platform near this floor
+                floor_platforms = [p for p in platforms_list[floor_index] if p.rect.width >= 100]
+            
+            if floor_platforms:
+                # Spawn worms on this floor
+                for _ in range(worms_for_this_floor):
+                    attempts = 0
+                    max_attempts = 10
+                    
+                    while attempts < max_attempts:
+                        attempts += 1
+                        
+                        # Choose a random platform on this floor
+                        platform = enemy_rng.choice(floor_platforms)
+                        
+                        # Make sure platform is wide enough for worm (worms are 80px wide)
+                        if platform.rect.width < 100:
+                            continue
+                        
+                        x = enemy_rng.randint(platform.rect.left + 40, platform.rect.right - 40)
+                        y = floor_y - 30  # Worms are low, closer to floor (24px tall)
+                        
+                        # Use worm enemy type for Level 7
+                        enemy = Enemy(x, y, "worm", theme=self.theme)
+                        
+                        # Verify enemy is properly initialized
+                        if hasattr(enemy, 'rect') and hasattr(enemy, 'update'):
+                            self.enemies.add(enemy)
+                            self.all_sprites.add(enemy)
+                            enemies_added += 1
+                            break
         
         # Store level properties for speedrun mechanics
         self.geometry_dash_mode = True
         self.spike_wall_x = 0
-        self.spike_wall_speed = 2.4
-        self.player_speed_multiplier = 0.6
+        self.spike_wall_speed = PLAYER_SPEED * 0.8  # Wall moves at 0.8x player speed
+        self.player_speed_multiplier = 1.0  # Player moves at regular speed
         self.countdown_timer = 180
         self.countdown_active = True
         
         # Warning sign at spawn
         self.run_sign_x = 350
-        self.run_sign_y = floor_ys[0] - 100
+        self.run_sign_y = middle_floor_y - 100
         self.computer_warning_text = "RUN!"
         
-        # Spawn position on bottom floor
+        # Spawn position on middle floor
         self.geometry_dash_spawn_x = 150
-        self.geometry_dash_spawn_y = floor_ys[0] - 60  # On bottom floor
+        self.geometry_dash_spawn_y = middle_floor_y - 60  # On middle floor
         
-        print(f"Multi-floor Level 6 created: {level_width} pixels wide, {num_floors} floors, {enemy_count} enemies, wall of death at {self.spike_wall_speed}x speed!")
+        print(f"Level 7 (404: Floor Not Found) created: {level_width} pixels wide, {num_floors} floors, {enemy_count} enemies, player speed 1.0x, wall speed {self.spike_wall_speed}!")
+    
+    def _add_floor_gaps(self, level_def, gap_count=4):
+        """Add gaps in the floor for Level 5 (Boo Who?)."""
+        import random
+        gap_rng = random.Random(4444 + self.current_level)
+        level_width = level_def["width"]
+        floor_y = level_def["height"] - 40  # Ground level
+        
+        # Get all ground platforms
+        ground_platforms = [p for p in self.platforms if hasattr(p, 'platform_type') and p.platform_type == 'ground']
+        if not ground_platforms:
+            return
+        
+        # Sort by x position
+        ground_platforms.sort(key=lambda p: p.rect.x)
+        
+        # Create gaps by removing platform segments
+        # Don't create gaps at the very start or end
+        safe_start = 400  # Keep first 400 pixels safe
+        safe_end = 400    # Keep last 400 pixels safe
+        
+        gaps_created = 0
+        attempts = 0
+        max_attempts = 50
+        
+        while gaps_created < gap_count and attempts < max_attempts:
+            attempts += 1
+            
+            # Find a random position in the safe zone
+            gap_x = gap_rng.randint(safe_start, level_width - safe_end)
+            
+            # Find the ground platform that contains this x position
+            platform_to_remove = None
+            for platform in ground_platforms:
+                if platform.rect.left <= gap_x <= platform.rect.right:
+                    platform_to_remove = platform
+                    break
+            
+            if platform_to_remove and platform_to_remove in self.platforms:
+                # Remove this platform segment to create a gap
+                self.platforms.remove(platform_to_remove)
+                self.all_sprites.remove(platform_to_remove)
+                ground_platforms.remove(platform_to_remove)
+                gaps_created += 1
+    
+    def _ensure_platform_spacing(self, level_def):
+        """Ensure all platforms have minimum spacing so player can fit between them.
+        
+        Player width is ~32 pixels (sprite), with 70% hitbox = ~22 pixels.
+        Minimum safe gap: 32 + 20 buffer = 52 pixels, use 60 for safety.
+        """
+        MIN_GAP = 60  # Minimum horizontal gap between platforms
+        PLATFORM_BUFFER = 10  # Extra buffer when adjusting platforms
+        
+        platforms_list = list(self.platforms)
+        # Exclude ground platforms - they should be continuous with no gaps
+        platforms_list = [p for p in platforms_list if not (hasattr(p, 'platform_type') and p.platform_type == 'ground')]
+        # Sort by Y position, then X position for consistent processing
+        platforms_list.sort(key=lambda p: (p.rect.y, p.rect.x))
+        
+        max_iterations = 3  # Limit iterations to prevent infinite loops
+        for iteration in range(max_iterations):
+            adjustments_made = False
+            
+            for i, p1 in enumerate(platforms_list):
+                for j, p2 in enumerate(platforms_list[i+1:], i+1):
+                    # Only check platforms at similar Y positions (within 50 pixels vertically)
+                    if abs(p1.rect.y - p2.rect.y) > 50:
+                        break  # Since sorted by Y, can break early
+                    
+                    # Check horizontal overlap or too-close spacing
+                    if p1.rect.right <= p2.rect.left:
+                        # p1 is to the left of p2
+                        gap = p2.rect.left - p1.rect.right
+                        if gap < MIN_GAP:
+                            # Move p2 to the right to create minimum gap
+                            move_distance = MIN_GAP - gap + PLATFORM_BUFFER
+                            new_x = p2.rect.x + move_distance
+                            # Keep within level bounds
+                            if new_x + p2.rect.width <= level_def["width"]:
+                                p2.rect.x = new_x
+                                adjustments_made = True
+                            elif p1.rect.x - move_distance >= 0:
+                                # If can't move right, try moving p1 left instead
+                                p1.rect.x = max(0, p1.rect.x - move_distance)
+                                adjustments_made = True
+                    elif p2.rect.right <= p1.rect.left:
+                        # p2 is to the left of p1
+                        gap = p1.rect.left - p2.rect.right
+                        if gap < MIN_GAP:
+                            # Move p1 to the right to create minimum gap
+                            move_distance = MIN_GAP - gap + PLATFORM_BUFFER
+                            new_x = p1.rect.x + move_distance
+                            # Keep within level bounds
+                            if new_x + p1.rect.width <= level_def["width"]:
+                                p1.rect.x = new_x
+                                adjustments_made = True
+                            elif p2.rect.x - move_distance >= 0:
+                                # If can't move right, try moving p2 left instead
+                                p2.rect.x = max(0, p2.rect.x - move_distance)
+                                adjustments_made = True
+                    else:
+                        # Platforms overlap horizontally - separate them
+                        overlap = min(p1.rect.right, p2.rect.right) - max(p1.rect.left, p2.rect.left)
+                        if overlap > 0:
+                            # Move p2 to the right to create gap
+                            move_distance = overlap + MIN_GAP + PLATFORM_BUFFER
+                            new_x = p2.rect.x + move_distance
+                            # Keep within level bounds
+                            if new_x + p2.rect.width <= level_def["width"]:
+                                p2.rect.x = new_x
+                                adjustments_made = True
+                            elif p1.rect.x - move_distance >= 0:
+                                # If can't move right, try moving p1 left instead
+                                p1.rect.x = max(0, p1.rect.x - move_distance)
+                                adjustments_made = True
+            
+            # Re-sort after adjustments
+            if adjustments_made:
+                platforms_list.sort(key=lambda p: (p.rect.y, p.rect.x))
+            else:
+                break  # No more adjustments needed
+    
+    def _create_underwater_maze_v2(self):
+        """Create an underwater maze level with swimming mechanics, walls, moving platforms, and spinning lasers.
+        Level 8: Kraken Me Up - completely different from other levels."""
+        import random
+        import math
+        level_def = self.levels[self.current_level]
+        width = level_def["width"]
+        height = level_def["height"]
+        
+        # Set underwater mode flag
+        self.underwater_mode = True
+        
+        # Use level dimensions
+        set_level_dimensions(width, height)
+        self.camera.set_level_dimensions(width, height)
+        
+        # Clear existing sprites
+        self.all_sprites.empty()
+        self.platforms.empty()
+        self.enemies.empty()
+        self.powerups.empty()
+        self.star_powerups.empty()
+        self.plants.empty()
+        self.obstacles.empty()
+        self.checkpoints.empty()
+        self.keys.empty()
+        self.npcs.empty()
+        self.big_coins.empty()
+        
+        maze_rng = random.Random(8888 + self.current_level)
+        spawn_safe_zone = 400
+        
+        # Create boundary walls to contain the maze
+        wall_thickness = 40  # Thick boundary walls
+        # Top wall
+        top_wall = Platform(0, 0, width, wall_thickness, platform_type="normal", theme=self.theme)
+        self.platforms.add(top_wall)
+        self.all_sprites.add(top_wall)
+        # Bottom wall
+        bottom_wall = Platform(0, height - wall_thickness, width, wall_thickness, platform_type="normal", theme=self.theme)
+        self.platforms.add(bottom_wall)
+        self.all_sprites.add(bottom_wall)
+        # Left wall
+        left_wall = Platform(0, 0, wall_thickness, height, platform_type="normal", theme=self.theme)
+        self.platforms.add(left_wall)
+        self.all_sprites.add(left_wall)
+        # Right wall
+        right_wall = Platform(width - wall_thickness, 0, wall_thickness, height, platform_type="normal", theme=self.theme)
+        self.platforms.add(right_wall)
+        self.all_sprites.add(right_wall)
+        
+        # Create a guaranteed path from start to end
+        # Path will be a series of connected open spaces
+        path_segments = []
+        segment_width = 200
+        segment_height = 150
+        num_segments = (width - spawn_safe_zone - 400) // segment_width
+        
+        # Create path waypoints
+        waypoints = []
+        for i in range(num_segments):
+            waypoint_x = spawn_safe_zone + (i * segment_width) + segment_width // 2
+            # Vary Y position but keep it navigable
+            waypoint_y = height // 2 + maze_rng.randint(-100, 100)
+            waypoint_y = max(150, min(height - 200, waypoint_y))  # Keep within bounds
+            waypoints.append((waypoint_x, waypoint_y))
+        
+        # Add end waypoint
+        end_x = width - 300
+        end_y = height // 2
+        waypoints.append((end_x, end_y))
+        
+        # Create walls around the path (but leave the path open)
+        # Horizontal walls - MANY MORE for a proper dense maze
+        horizontal_wall_count = 100 + level_def["difficulty"] * 10  # WAY more walls
+        walls_placed = 0
+        attempts = 0
+        max_attempts = horizontal_wall_count * 3
+        while walls_placed < horizontal_wall_count and attempts < max_attempts:
+            attempts += 1
+            x = maze_rng.randint(spawn_safe_zone + 200, width - 400)
+            y = maze_rng.randint(150, height - 200)
+            wall_width = maze_rng.randint(100, 400)  # Varied widths
+            wall_height = 30  # Thick walls
+            
+            # Check if this wall would block the guaranteed path
+            blocks_path = False
+            for wx, wy in waypoints:
+                # Check if wall overlaps with path waypoint area
+                if (x < wx + segment_width//2 and x + wall_width > wx - segment_width//2 and
+                    y < wy + segment_height//2 and y + wall_height > wy - segment_height//2):
+                    blocks_path = True
+                    break
+            
+            if not blocks_path:
+                # Create horizontal wall platform
+                wall = Platform(x, y, wall_width, wall_height, platform_type="normal", theme=self.theme)
+                self.platforms.add(wall)
+                self.all_sprites.add(wall)
+                walls_placed += 1
+        
+        # Vertical walls - MANY MORE for a proper dense maze
+        vertical_wall_count = 90 + level_def["difficulty"] * 10  # WAY more walls
+        walls_placed = 0
+        attempts = 0
+        max_attempts = vertical_wall_count * 3
+        while walls_placed < vertical_wall_count and attempts < max_attempts:
+            attempts += 1
+            x = maze_rng.randint(spawn_safe_zone + 200, width - 400)
+            y = maze_rng.randint(150, height - 200)
+            wall_width = 30  # Thick walls
+            wall_height = maze_rng.randint(100, 300)  # Varied heights
+            
+            # Check if this wall would block the guaranteed path
+            blocks_path = False
+            for wx, wy in waypoints:
+                # Check if wall overlaps with path waypoint area
+                if (x < wx + segment_width//2 and x + wall_width > wx - segment_width//2 and
+                    y < wy + segment_height//2 and y + wall_height > wy - segment_height//2):
+                    blocks_path = True
+                    break
+            
+            if not blocks_path:
+                # Create vertical wall platform
+                wall = Platform(x, y, wall_width, wall_height, platform_type="normal", theme=self.theme)
+                self.platforms.add(wall)
+                self.all_sprites.add(wall)
+                walls_placed += 1
+        
+        # Add additional maze structure - create corridors and dead ends
+        # Add some longer corridor walls
+        corridor_count = 50 + level_def["difficulty"] * 5  # More corridors
+        for _ in range(corridor_count):
+            # Create longer walls for corridors
+            if maze_rng.random() < 0.5:
+                # Horizontal corridor
+                x = maze_rng.randint(spawn_safe_zone + 200, width - 600)
+                y = maze_rng.randint(150, height - 200)
+                wall_width = maze_rng.randint(300, 500)  # Longer corridors
+                wall_height = 30
+                
+                # Check if blocks path
+                blocks_path = False
+                for wx, wy in waypoints:
+                    if (x < wx + segment_width//2 and x + wall_width > wx - segment_width//2 and
+                        y < wy + segment_height//2 and y + wall_height > wy - segment_height//2):
+                        blocks_path = True
+                        break
+                
+                if not blocks_path:
+                    wall = Platform(x, y, wall_width, wall_height, platform_type="normal", theme=self.theme)
+                    self.platforms.add(wall)
+                    self.all_sprites.add(wall)
+            else:
+                # Vertical corridor
+                x = maze_rng.randint(spawn_safe_zone + 200, width - 400)
+                y = maze_rng.randint(150, height - 300)
+                wall_width = 30
+                wall_height = maze_rng.randint(200, 350)  # Taller corridors
+                
+                # Check if blocks path
+                blocks_path = False
+                for wx, wy in waypoints:
+                    if (x < wx + segment_width//2 and x + wall_width > wx - segment_width//2 and
+                        y < wy + segment_height//2 and y + wall_height > wy - segment_height//2):
+                        blocks_path = True
+                        break
+                
+                if not blocks_path:
+                    wall = Platform(x, y, wall_width, wall_height, platform_type="normal", theme=self.theme)
+                    self.platforms.add(wall)
+                    self.all_sprites.add(wall)
+        
+        # Add bubble walls - transparent bubble clusters (LOTS of them!)
+        bubble_wall_count = 60 + level_def["difficulty"] * 10  # Many more bubble walls
+        walls_placed = 0
+        attempts = 0
+        max_attempts = bubble_wall_count * 5
+        while walls_placed < bubble_wall_count and attempts < max_attempts:
+            attempts += 1
+            x = maze_rng.randint(spawn_safe_zone + 200, width - 400)
+            y = maze_rng.randint(150, height - 200)
+            wall_width = maze_rng.randint(60, 180)
+            wall_height = maze_rng.randint(60, 180)
+            
+            # Check if this bubble wall would block the guaranteed path
+            blocks_path = False
+            for wx, wy in waypoints:
+                if (x < wx + segment_width//2 and x + wall_width > wx - segment_width//2 and
+                    y < wy + segment_height//2 and y + wall_height > wy - segment_height//2):
+                    blocks_path = True
+                    break
+            
+            if not blocks_path:
+                # Create bubble wall platform
+                bubble_wall = Platform(x, y, wall_width, wall_height, platform_type="normal", theme=self.theme)
+                bubble_wall.is_bubble_wall = True  # Mark as bubble wall
+                self.platforms.add(bubble_wall)
+                self.all_sprites.add(bubble_wall)
+                walls_placed += 1
+        
+        # Add lots of moving platforms
+        moving_platform_count = 20 + level_def["difficulty"] * 3
+        for _ in range(moving_platform_count):
+            x = maze_rng.randint(spawn_safe_zone + 200, width - 400)
+            y = maze_rng.randint(100, height - 150)
+            platform_width = maze_rng.randint(100, 180)
+            platform_height = 20
+            
+            # Random movement type
+            move_type = maze_rng.choice(["moving", "vertical_moving", "tetris_moving"])
+            moving_platform = Platform(x, y, platform_width, platform_height, platform_type=move_type, theme=self.theme)
+            moving_platform.original_x = x
+            moving_platform.original_y = y
+            moving_platform.move_offset = maze_rng.random() * 6.28  # Random starting phase
+            self.platforms.add(moving_platform)
+            self.all_sprites.add(moving_platform)
+        
+        # Add spinning laser obstacles (windmill-like, large)
+        laser_count = 8 + level_def["difficulty"]
+        for _ in range(laser_count):
+            x = maze_rng.randint(spawn_safe_zone + 300, width - 300)
+            y = maze_rng.randint(150, height - 200)
+            # Create spinning laser obstacle
+            laser = Obstacle(x, y, "spinning_laser")
+            laser.rotation_angle = maze_rng.random() * 6.28  # Random starting rotation
+            laser.rotation_speed = 0.05 + maze_rng.random() * 0.03  # Variable rotation speed
+            laser.rect.center = (x, y)  # Center on position (already set in __init__, but ensure it's correct)
+            laser.draw_obstacle()  # Draw initial state
+            self.obstacles.add(laser)
+            self.all_sprites.add(laser)
+        
+        # Add coins throughout the maze for collection
+        coin_count = 30 + level_def["difficulty"] * 5
+        for _ in range(coin_count):
+            x = maze_rng.randint(spawn_safe_zone + 100, width - 200)
+            y = maze_rng.randint(100, height - 150)
+            coin = Powerup(x, y, "coin")
+            self.powerups.add(coin)
+            self.all_sprites.add(coin)
+        
+        # Add underwater enemies: crabs, sharks, piranhas - MORE ENEMIES!
+        enemy_rng = random.Random(9999 + self.current_level)
+        enemy_count = 30 + level_def["difficulty"] * 5  # Many more enemies!
+        
+        # Distribute enemy types - place them throughout the maze
+        enemies_placed = 0
+        attempts = 0
+        max_attempts = enemy_count * 15  # More attempts to place enemies
+        while enemies_placed < enemy_count and attempts < max_attempts:
+            attempts += 1
+            x = enemy_rng.randint(spawn_safe_zone + 200, width - 300)
+            y = enemy_rng.randint(150, height - 200)
+            
+            # Check if position is too close to spawn or waypoints
+            too_close_to_path = False
+            # Check spawn safe zone
+            spawn_distance = ((x - spawn_safe_zone)**2 + (y - height//2)**2)**0.5
+            if spawn_distance < 200:  # Keep enemies away from spawn
+                too_close_to_path = True
+            else:
+                # Check waypoints
+                for wx, wy in waypoints:
+                    distance = ((x - wx)**2 + (y - wy)**2)**0.5
+                    if distance < 100:  # Keep enemies away from path (reduced from 150)
+                        too_close_to_path = True
+                        break
+            
+            if not too_close_to_path:
+                # Choose enemy type - more variety
+                enemy_choice = enemies_placed % 6
+                if enemy_choice < 2:
+                    enemy_type = "crab"  # 2/6 = crabs
+                elif enemy_choice < 4:
+                    enemy_type = "shark"  # 2/6 = sharks
+                else:
+                    enemy_type = "piranha"  # 2/6 = piranhas
+                
+                enemy = Enemy(x, y, enemy_type, theme=self.theme)
+                enemy.is_swimming = True  # Mark as swimming enemy
+                # Initialize swimming behavior
+                enemy.swim_timer = 0
+                enemy.swim_direction = enemy_rng.choice([0, 1, 2, 3])
+                enemy.swim_change_timer = enemy_rng.randint(0, 90)  # Random starting timer
+                self.enemies.add(enemy)
+                self.all_sprites.add(enemy)
+                enemies_placed += 1
+        
+        # Add checkpoint at the end
+        end_checkpoint = Checkpoint(width - 200, height // 2, theme=self.theme)
+        self.checkpoints.add(end_checkpoint)
+        self.all_sprites.add(end_checkpoint)
+        
+        # Safe spawn near start
+        self.geometry_dash_spawn_x = spawn_safe_zone
+        self.geometry_dash_spawn_y = height // 2
+        
+        # Initialize bubble wall of death for Level 8
+        from constants import PLAYER_SPEED
+        self.bubble_wall_mode = True
+        self.bubble_wall_x = 0
+        self.bubble_wall_speed = PLAYER_SPEED * 0.75  # Wall moves at 0.75x player speed (slightly slower than Level 7)
+        self.bubble_wall_countdown_timer = 240  # 4 second countdown (60 FPS * 4)
+        self.bubble_wall_countdown_active = True
+        
+        # Reset camera
+        self.camera.x = 0
+        self.camera.y = 0
+        
+        print(f"Underwater maze created: {width}x{height}, {enemies_placed} swimming enemies, {laser_count} spinning lasers, {len(self.platforms)} total platforms!")
     
     def _create_underwater_maze(self):
-        """Create an underwater scrolling level (Level 9: Kraken Me Up)."""
+        """Create an underwater scrolling level (Level 8: Kraken Me Up, was Level 9)."""
         import random
         level_def = self.levels[self.current_level]
         width = level_def["width"]
@@ -1290,6 +1993,16 @@ class Game:
 
         # Coins for guidance
         coin_rng = random.Random(9292 + self.current_level)
+        
+        # Level 8 should have a rainbow star (bonus room on levels 1, 3, 5, 7, 9)
+        if self.current_level == 7:  # Level 8 (0-indexed, was level 9)
+            # Place one rainbow star
+            star_cx = coin_rng.randint(3, 8) * segment - 100
+            star_cy = coin_rng.randint(160, height - 220)
+            rainbow_star = Powerup(star_cx, star_cy, "rainbow_star")
+            self.powerups.add(rainbow_star)
+            self.all_sprites.add(rainbow_star)
+        
         for s in range(2, 10):
             cx = s * segment - 100
             cy = coin_rng.randint(160, height - 220)
@@ -1373,6 +2086,17 @@ class Game:
         
         # Create lots of coins for collection
         coin_count = 30 + self.levels[self.current_level]["difficulty"] * 10
+        
+        # Level 9 should have a rainbow star (bonus room on levels 1, 3, 5, 7, 9)
+        rainbow_star_placed = False
+        if self.current_level == 8:  # Level 9 (0-indexed)
+            # Place one rainbow star
+            star_x = coin_rng.randint(200, 800)
+            star_y = coin_rng.randint(150, 650)
+            rainbow_star = Powerup(star_x, star_y, "rainbow_star")
+            self.powerups.add(rainbow_star)
+            self.all_sprites.add(rainbow_star)
+            rainbow_star_placed = True
         
         for _ in range(coin_count):
             x = coin_rng.randint(100, 900)
@@ -1508,13 +2232,14 @@ class Game:
             # Create player with speed multiplier for Geometry Dash mode
             speed_multiplier = getattr(self, 'player_speed_multiplier', 1.0)
             # Level 10 gets 5% higher jump
-            jump_multiplier = 1.05 if self.current_level == 9 else 1.0
+            jump_multiplier = 1.05 if self.current_level == 8 else 1.0
             # Use special spawn position for Geometry Dash level
             if hasattr(self, 'geometry_dash_spawn_x') and hasattr(self, 'geometry_dash_spawn_y'):
                 spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
             else:
                 spawn_x, spawn_y = 100, 400
             self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier)
+            self.player._game = self  # Give player access to game state
             self.all_sprites.add(self.player)
             self.camera.x = 0
             self.camera.y = 0
@@ -1595,13 +2320,14 @@ class Game:
                 # Create player with speed multiplier for Geometry Dash mode
                 speed_multiplier = getattr(self, 'player_speed_multiplier', 1.0)
                 # Level 10 gets 5% higher jump
-                jump_multiplier = 1.05 if self.current_level == 9 else 1.0
+                jump_multiplier = 1.05 if self.current_level == 8 else 1.0
                 # Use special spawn position for Geometry Dash level
                 if hasattr(self, 'geometry_dash_spawn_x') and hasattr(self, 'geometry_dash_spawn_y'):
                     spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
                 else:
                     spawn_x, spawn_y = 100, 400
                 self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier)
+                self.player._game = self  # Give player access to game state
                 self.all_sprites.add(self.player)
                 self._needs_initial_load = False
                 self.state = GameState.MENU
@@ -1615,8 +2341,35 @@ class Game:
         if self.state == GameState.PLAYING:
             self.camera.update(self.player)
             
+            # Initialize result variable
+            result = None
+            
+            # Handle bubble wall of death mechanics for Level 8
+            if hasattr(self, 'bubble_wall_mode') and self.bubble_wall_mode:
+                # Handle countdown timer
+                if hasattr(self, 'bubble_wall_countdown_active') and self.bubble_wall_countdown_active:
+                    self.bubble_wall_countdown_timer -= 1
+                    if self.bubble_wall_countdown_timer <= 0:
+                        self.bubble_wall_countdown_active = False
+                        print("COUNTDOWN OVER! Bubble wall is now moving!")
+                
+                # Only move bubble wall after countdown is over
+                if hasattr(self, 'bubble_wall_countdown_active') and not self.bubble_wall_countdown_active:
+                    # Move bubble wall closer to player
+                    self.bubble_wall_x += self.bubble_wall_speed
+                    
+                    # Check if bubble wall caught up to player
+                    if self.bubble_wall_x >= self.player.rect.x - 50:
+                        # Player is caught by bubble wall - death
+                        result = "hit"
+                    else:
+                        result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
+                else:
+                    # During countdown, normal player movement
+                    result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
+            
             # Handle Geometry Dash spike wall mechanics
-            if hasattr(self, 'geometry_dash_mode') and self.geometry_dash_mode:
+            elif hasattr(self, 'geometry_dash_mode') and self.geometry_dash_mode:
                 # Handle course vertical movement
                 if hasattr(self, 'course_vertical_offset'):
                     self.course_vertical_offset += self.course_vertical_speed * self.course_vertical_direction
@@ -1657,6 +2410,10 @@ class Game:
             else:
                 result = self.player.update(self.platforms, self.enemies, self.powerups, self.obstacles, self.camera.x, self.camera.level_width)
             
+            # Pass underwater_mode to player for swimming mechanics
+            if hasattr(self, 'underwater_mode') and self.underwater_mode:
+                self.player._game = self  # Give player access to game state
+            
             # Check for checkpoint collisions
             checkpoint_collisions = pygame.sprite.spritecollide(self.player, self.checkpoints, False)
             for checkpoint in checkpoint_collisions:
@@ -1666,7 +2423,20 @@ class Game:
                     if self.sound_manager:
                         self.sound_manager.play('coin')  # Use coin sound for checkpoint activation
             
-            # Check for star powerup collisions
+            # Check for regular powerup (coin) collisions
+            powerup_collisions = pygame.sprite.spritecollide(self.player, self.powerups, True)
+            if powerup_collisions:
+                for powerup in powerup_collisions:
+                    if hasattr(powerup, 'powerup_type'):
+                        if powerup.powerup_type == "coin":
+                            self.score += 100
+                            if self.sound_manager:
+                                self.sound_manager.play('coin')
+                        elif powerup.powerup_type == "rainbow_star":
+                            self.player.activate_star_powerup()
+                            self.score += 500  # Bonus score for star powerup
+            
+            # Check for star powerup collisions (separate group)
             star_collisions = pygame.sprite.spritecollide(self.player, self.star_powerups, True)
             if star_collisions:
                 self.player.activate_star_powerup()
@@ -1675,8 +2445,8 @@ class Game:
             # Handle rainbow star collection (bonus room trigger)
             if result == "rainbow_star":
                 # Rainbow star only transports to bonus room (no points)
-                # Trigger bonus room only on odd levels (1, 3, 5, 7, 9) - 0-indexed
-                if self.current_level % 2 == 0 and self.current_level < len(self.levels):
+                # Trigger bonus room only on levels 1, 3, 5, 7, 9 (0-indexed: 0, 2, 4, 6, 8)
+                if self.current_level in [0, 2, 4, 6, 8] and self.current_level < len(self.levels):
                     # Calculate difficulty based on level (Level 9 = hardest)
                     # Level 1 (index 0) -> difficulty 0, Level 3 (index 2) -> difficulty 1, etc.
                     bonus_difficulty = min(self.current_level // 2, 4)  # Max difficulty of 4
@@ -1708,8 +2478,14 @@ class Game:
                             respawn_y = 400
                         self.player.respawn(respawn_x, respawn_y)
                     
+                    # Reset bubble wall mechanics on respawn
+                    if hasattr(self, 'bubble_wall_mode') and self.bubble_wall_mode:
+                        self.bubble_wall_x = 0  # Reset wall position
+                        self.bubble_wall_countdown_timer = 240  # Reset countdown
+                        self.bubble_wall_countdown_active = True  # Restart countdown
+                        print("RESPAWN: Bubble wall reset, countdown restarted!")
                     # Reset Geometry Dash mechanics on respawn
-                    if hasattr(self, 'geometry_dash_mode') and self.geometry_dash_mode:
+                    elif hasattr(self, 'geometry_dash_mode') and self.geometry_dash_mode:
                         self.spike_wall_x = 0  # Reset wall position
                         self.countdown_timer = 180  # Reset countdown
                         self.countdown_active = True  # Restart countdown
@@ -1761,6 +2537,11 @@ class Game:
             self.star_powerups.update()
             self.platforms.update()
             self.keys.update()
+            # Update falling meatballs
+            level_def = self.levels[self.current_level]
+            for obstacle in self.obstacles:
+                if hasattr(obstacle, 'update'):
+                    obstacle.update(level_def["height"])
         
         elif self.state == GameState.BONUS_ROOM:
             # Vertical bonus room logic - treat it like a normal level
@@ -1813,7 +2594,7 @@ class Game:
                 # Create player with speed multiplier for Geometry Dash mode
                 speed_multiplier = getattr(self, 'player_speed_multiplier', 1.0)
                 # Level 10 gets 5% higher jump
-                jump_multiplier = 1.05 if self.current_level == 9 else 1.0
+                jump_multiplier = 1.05 if self.current_level == 8 else 1.0
                 # Use special spawn position for Geometry Dash level
                 if hasattr(self, 'geometry_dash_spawn_x') and hasattr(self, 'geometry_dash_spawn_y'):
                     spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
@@ -1945,19 +2726,204 @@ class Game:
                 else:
                     self.screen.blit(sprite.image, (screen_x, screen_y))
         
+        # Draw bubble wall of death for Level 8
+        if hasattr(self, 'bubble_wall_mode') and self.bubble_wall_mode:
+            # Draw dramatic countdown timer
+            if hasattr(self, 'bubble_wall_countdown_active') and self.bubble_wall_countdown_active:
+                countdown_seconds = max(1, ((self.bubble_wall_countdown_timer - 1) // 60) + 1)
+                frames_remaining = self.bubble_wall_countdown_timer % 60
+                
+                # Dramatic pulsing effect - larger and brighter as countdown approaches 0
+                pulse_factor = 1.0 + 0.3 * abs(pygame.math.sin(frames_remaining * 0.2))
+                if countdown_seconds <= 3:
+                    size_multiplier = 1.0 + (0.5 * (4 - countdown_seconds) / 3)  # Gets bigger: 1.5x at 1, 1.33x at 2, 1.17x at 3
+                else:
+                    size_multiplier = 1.0
+                
+                # Dark overlay with blue tint for underwater
+                overlay = pygame.Surface((self.screen_width, self.screen_height))
+                overlay_alpha = 180 if countdown_seconds <= 3 else 120
+                overlay.set_alpha(overlay_alpha)
+                overlay.fill((0, 50, 100))  # Blue tint for underwater
+                self.screen.blit(overlay, (0, 0))
+                
+                # Large dramatic countdown box with pulsing effect
+                box_size = int(300 * size_multiplier * pulse_factor)
+                countdown_rect = pygame.Rect(
+                    self.screen_width // 2 - box_size // 2,
+                    self.screen_height // 2 - box_size // 2,
+                    box_size,
+                    box_size
+                )
+                border_color_intensity = min(255, 100 + (countdown_seconds <= 3) * 155)
+                border_width = 8 if countdown_seconds <= 3 else 5
+                # Blue border for underwater theme
+                pygame.draw.rect(self.screen, (0, border_color_intensity, 255), countdown_rect, border_width)
+                
+                # Inner glow effect for last 3 seconds
+                if countdown_seconds <= 3:
+                    inner_glow = pygame.Rect(
+                        countdown_rect.x + 10, countdown_rect.y + 10,
+                        countdown_rect.width - 20, countdown_rect.height - 20
+                    )
+                    glow_alpha = int(100 * (4 - countdown_seconds) / 3)
+                    glow_surface = pygame.Surface((inner_glow.width, inner_glow.height))
+                    glow_surface.set_alpha(glow_alpha)
+                    glow_surface.fill((100, 200, 255))  # Light blue glow
+                    self.screen.blit(glow_surface, inner_glow.topleft)
+                
+                # Dramatic countdown number - huge and pulsing
+                from constants import ERROR_RED
+                font_size = int(200 * size_multiplier * pulse_factor)
+                font = pygame.font.Font(None, font_size)
+                
+                # Draw countdown number with custom color (red for urgency, cyan otherwise)
+                countdown_color = ERROR_RED if countdown_seconds <= 3 else (0, 255, 255)  # Cyan for underwater
+                number_text = str(countdown_seconds)
+                number_surface = font.render(number_text, True, countdown_color)
+                number_rect = number_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2))
+                
+                # Outline for visibility
+                outline_color = (0, 0, 0) if countdown_seconds <= 3 else (0, 100, 150)
+                outline_surface = font.render(number_text, True, outline_color)
+                outline_rect = outline_surface.get_rect(center=(self.screen_width // 2 + 2, self.screen_height // 2 + 2))
+                self.screen.blit(outline_surface, outline_rect)
+                self.screen.blit(number_surface, number_rect)
+                
+                # Warning text below countdown
+                if countdown_seconds <= 3:
+                    warning_text = "BUBBLE WALL INCOMING!"
+                else:
+                    warning_text = "PREPARE TO SWIM!"
+                
+                warning_font = pygame.font.Font(None, 48)
+                warning_surface = warning_font.render(warning_text, True, (255, 255, 255))
+                warning_rect = warning_surface.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 150))
+                self.screen.blit(warning_surface, warning_rect)
+            else:
+                # Countdown over - draw bubble wall
+                bubble_wall_screen_x = self.bubble_wall_x - self.camera.x
+                if -100 < bubble_wall_screen_x < self.screen_width + 100:
+                    # Draw bubble wall - full height, blue bubbles
+                    bubble_wall_rect = pygame.Rect(bubble_wall_screen_x, 0, 60, self.screen_height)
+                    
+                    # Base blue background
+                    pygame.draw.rect(self.screen, (50, 150, 255), bubble_wall_rect)  # Deep blue
+                    pygame.draw.rect(self.screen, (0, 100, 200), bubble_wall_rect, 3)  # Darker blue border
+                    
+                    # Draw bubbles across the wall
+                    import random
+                    bubble_rng = random.Random(8888)  # Fixed seed for consistent bubbles
+                    for y in range(20, self.screen_height - 20, 40):
+                        for x_offset in range(10, 50, 20):
+                            bubble_x = bubble_wall_screen_x + x_offset
+                            bubble_y = y + bubble_rng.randint(-10, 10)
+                            bubble_size = bubble_rng.randint(8, 15)
+                            
+                            # Main bubble
+                            pygame.draw.circle(self.screen, (100, 200, 255), (bubble_x, bubble_y), bubble_size)
+                            pygame.draw.circle(self.screen, (50, 150, 255), (bubble_x, bubble_y), bubble_size, 2)
+                            
+                            # Bubble highlight
+                            highlight_x = bubble_x - bubble_size // 3
+                            highlight_y = bubble_y - bubble_size // 3
+                            highlight_size = bubble_size // 3
+                            pygame.draw.circle(self.screen, (200, 240, 255), (highlight_x, highlight_y), highlight_size)
+                            
+                            # Small bubbles around main bubble
+                            for _ in range(2):
+                                small_x = bubble_x + bubble_rng.randint(-bubble_size, bubble_size)
+                                small_y = bubble_y + bubble_rng.randint(-bubble_size, bubble_size)
+                                small_size = bubble_rng.randint(3, 6)
+                                if 5 <= small_x - bubble_wall_screen_x < 55:
+                                    pygame.draw.circle(self.screen, (100, 200, 255), (small_x, small_y), small_size)
+                                    pygame.draw.circle(self.screen, (50, 150, 255), (small_x, small_y), small_size, 1)
+                    
+                    # Warning text on wall
+                    warning_font = pygame.font.Font(None, 24)
+                    warning_text = "!!!"
+                    warning_surface = warning_font.render(warning_text, True, (255, 255, 255))
+                    warning_rect = warning_surface.get_rect(center=(bubble_wall_screen_x + 30, self.screen_height // 2))
+                    self.screen.blit(warning_surface, warning_rect)
+        
         # Draw Geometry Dash mode elements
-        if hasattr(self, 'geometry_dash_mode') and self.geometry_dash_mode:
-            # Draw countdown timer
+        elif hasattr(self, 'geometry_dash_mode') and self.geometry_dash_mode:
+            # Draw dramatic countdown timer
             if hasattr(self, 'countdown_active') and self.countdown_active:
                 countdown_seconds = max(1, ((self.countdown_timer - 1) // 60) + 1)
+                frames_remaining = self.countdown_timer % 60
                 
-                # Computer terminal-style countdown display in center of screen
-                countdown_rect = pygame.Rect(self.screen_width//2 - 100, self.screen_height//2 - 100, 200, 200)
-                pygame.draw.rect(self.screen, (0, 0, 0), countdown_rect)  # Black terminal background
-                pygame.draw.rect(self.screen, (0, 255, 0), countdown_rect, 5)  # Green terminal border
+                # Dramatic pulsing effect - larger and brighter as countdown approaches 0
+                pulse_factor = 1.0 + (0.3 * (1 - frames_remaining / 60))  # Pulse from 1.0 to 1.3
+                size_multiplier = 1.0
+                if countdown_seconds <= 3:
+                    # Extra dramatic for last 3 seconds
+                    size_multiplier = 1.0 + (0.5 * (4 - countdown_seconds) / 3)  # Gets bigger: 1.5x at 1, 1.33x at 2, 1.17x at 3
                 
-                # Draw countdown number in computer style
-                self.ui.draw_cheese_title(self.screen, str(countdown_seconds), self.screen_width//2, self.screen_height//2 - 20, center=True, size=120)
+                # Create dramatic overlay - darken screen
+                overlay = pygame.Surface((self.screen_width, self.screen_height))
+                overlay_alpha = 180 if countdown_seconds <= 3 else 120
+                overlay.set_alpha(overlay_alpha)
+                overlay.fill((0, 0, 0))
+                self.screen.blit(overlay, (0, 0))
+                
+                # Large dramatic countdown box with pulsing effect
+                box_size = int(300 * size_multiplier * pulse_factor)
+                countdown_rect = pygame.Rect(
+                    self.screen_width//2 - box_size//2, 
+                    self.screen_height//2 - box_size//2, 
+                    box_size, 
+                    box_size
+                )
+                
+                # Pulsing green border - brighter when close to 0
+                border_color_intensity = min(255, 100 + (countdown_seconds <= 3) * 155)
+                border_width = 8 if countdown_seconds <= 3 else 5
+                pygame.draw.rect(self.screen, (0, border_color_intensity, 0), countdown_rect, border_width)
+                
+                # Inner glow effect for last 3 seconds
+                if countdown_seconds <= 3:
+                    inner_rect = pygame.Rect(
+                        countdown_rect.x + 10, countdown_rect.y + 10,
+                        countdown_rect.width - 20, countdown_rect.height - 20
+                    )
+                    glow_surface = pygame.Surface((inner_rect.width, inner_rect.height))
+                    glow_surface.set_alpha(100)
+                    glow_surface.fill((0, 255, 0))
+                    self.screen.blit(glow_surface, inner_rect.topleft)
+                
+                # Dramatic countdown number - huge and pulsing
+                number_size = int(200 * size_multiplier * pulse_factor)
+                from constants import ERROR_RED
+                
+                # Draw countdown number with custom color (red for urgency, green otherwise)
+                countdown_color = ERROR_RED if countdown_seconds <= 3 else (0, 255, 0)
+                font = pygame.font.Font(None, number_size)
+                number_text = str(countdown_seconds)
+                number_surface = font.render(number_text, True, countdown_color)
+                number_rect = number_surface.get_rect(center=(self.screen_width//2, self.screen_height//2 - 20))
+                
+                # Add dramatic outline for visibility
+                outline_color = (0, 0, 0) if countdown_seconds <= 3 else (0, 200, 0)
+                for dx in (-3, -2, -1, 1, 2, 3):
+                    for dy in (-3, -2, -1, 1, 2, 3):
+                        outline_surface = font.render(number_text, True, outline_color)
+                        self.screen.blit(outline_surface, (number_rect.x + dx, number_rect.y + dy))
+                
+                # Draw main number
+                self.screen.blit(number_surface, number_rect)
+                
+                # Warning text below countdown
+                if countdown_seconds <= 3:
+                    warning_text = "WALL OF DEATH INCOMING!"
+                    self.ui.draw_bubble_text(self.screen, warning_text, 
+                                           self.screen_width//2, self.screen_height//2 + 150, 
+                                           center=True, size=36)
+                else:
+                    warning_text = "PREPARE TO RUN!"
+                    self.ui.draw_bubble_text(self.screen, warning_text, 
+                                           self.screen_width//2, self.screen_height//2 + 150, 
+                                           center=True, size=28)
                 
                 # Add computer-style status text
                 self.ui.draw_bubble_text(self.screen, "SYSTEM READY", self.screen_width//2, self.screen_height//2 + 40, center=True, size=16)

@@ -1,14 +1,15 @@
 import constants as const
 
+# This is now Level 8 (was Level 9)
 LEVEL_DEF = {
-    "width": 12000,
+    "width": 12800,
     "height": 600,
     "difficulty": 7,
     "theme": {
-        "name": "Concrete Jungle",
-        "sky_top": const.CITY_SMOG_GREY,
-        "sky_bottom": const.OVERGROWTH_GREEN,
-        "bg_motif": "vines"
+        "name": "Kraken Me Up",
+        "sky_top": const.MURKY_TEAL,
+        "sky_bottom": const.ABYSSAL_BLACK,
+        "bg_motif": "bubbles"
     }
 }
 

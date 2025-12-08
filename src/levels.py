@@ -91,7 +91,7 @@ LEVEL_THEMES: List[Dict[str, Any]] = [
 ]
 
 
-def generate_levels(num_levels: int = 10) -> List[Dict[str, Any]]:
+def generate_levels(num_levels: int = 9) -> List[Dict[str, Any]]:
     """
     Generates a list of unique, progressively difficult game levels.
     """
