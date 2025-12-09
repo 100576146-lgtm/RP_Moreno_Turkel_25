@@ -29,8 +29,8 @@ class Player(pygame.sprite.Sprite):
     def __init__(self, x, y, sound_manager=None, speed_multiplier=1.0, jump_multiplier=1.0, player_color=2):
         super().__init__()
         
-        # Initialize sprite animator
-        self.sprite_animator = SpriteAnimator()
+        # Initialize sprite animator with player color
+        self.sprite_animator = SpriteAnimator(player_color=player_color)
         self.speed_multiplier = speed_multiplier
         self.jump_multiplier = jump_multiplier
         self.player_color = player_color  # 1: Red, 2: Purple, 3: Blue
@@ -97,6 +97,15 @@ class Player(pygame.sprite.Sprite):
         if self.sound_manager:
             self.sound_manager.play('coin')  # Use coin sound for powerup
 
+    def update_sprite_animator_color(self):
+        """Update sprite animator when player color changes."""
+        # Recreate sprite animator with new color to load correct sprite set
+        if self.sprite_animator.player_color != self.player_color:
+            current_anim = self.sprite_animator.current_animation
+            current_facing = self.sprite_animator.facing_right
+            self.sprite_animator = SpriteAnimator(player_color=self.player_color)
+            self.sprite_animator.set_animation(current_anim, current_facing)
+    
     def draw_character(self):
         """Rebuild the current frame for the player sprite image.
 
@@ -104,29 +113,15 @@ class Player(pygame.sprite.Sprite):
         visible `self.image` (with glow when a star is active).
         """
         """Update the character sprite using the sprite animator."""
+        # Ensure sprite animator has the correct color
+        if self.sprite_animator.player_color != self.player_color:
+            self.update_sprite_animator_color()
+        
         # Update the sprite animator
         self.sprite_animator.update()
         
-        # Get the current sprite
+        # Get the current sprite (now uses actual colored sprites, no filter needed)
         base_sprite = self.sprite_animator.get_current_sprite()
-        
-        # Apply color filter based on player_color
-        # 1: Red, 2: Purple (default), 3: Blue
-        if self.player_color == 1:  # Red filter
-            # Apply red tint using color multiplication
-            base_sprite = base_sprite.copy()
-            # Create a red overlay and blend it with ADD mode for more visible effect
-            red_overlay = pygame.Surface(base_sprite.get_size(), pygame.SRCALPHA)
-            red_overlay.fill((255, 180, 180, 200))  # Red tint
-            base_sprite.blit(red_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-        elif self.player_color == 3:  # Blue filter
-            # Apply blue tint using color multiplication
-            base_sprite = base_sprite.copy()
-            # Create a blue overlay and blend it with ADD mode for more visible effect
-            blue_overlay = pygame.Surface(base_sprite.get_size(), pygame.SRCALPHA)
-            blue_overlay.fill((180, 180, 255, 200))  # Blue tint
-            base_sprite.blit(blue_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-        # player_color == 2 (Purple) is the default, no filter needed
         
         # If star is active, add glow effect
         if self.star_active:

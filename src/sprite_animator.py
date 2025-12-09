@@ -10,7 +10,11 @@ import glob
 class SpriteAnimator:
     """Manages sprite animations for the player character."""
     
-    def __init__(self):
+    def __init__(self, player_color=2):
+        """
+        Initialize sprite animator.
+        player_color: 1 = Red, 2 = Purple, 3 = Blue
+        """
         self.sprites = {}
         self.animations = {}
         self.current_animation = "idle"
@@ -18,6 +22,7 @@ class SpriteAnimator:
         self.animation_timer = 0
         self.animation_speed = 8  # frames per second
         self.facing_right = True
+        self.player_color = player_color  # 1: Red, 2: Purple, 3: Blue
         
         # Animation control - only animate during actions
         self.should_animate = False
@@ -32,7 +37,7 @@ class SpriteAnimator:
         if not pygame.display.get_surface():
             pygame.display.set_mode((1, 1))
         
-        # Load all sprite sheets
+        # Load all sprite sheets (including color-specific rat sprites)
         self.load_sprite_sheets()
         self.organize_animations()
     
@@ -40,7 +45,25 @@ class SpriteAnimator:
         """Load sprites from the cropped sprite directories."""
         # Look for sprite directories in game images folder
         game_images_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "game images")
-        # Try different grid sizes to find the best organization
+        
+        # Map player_color to sprite directory
+        color_dirs = {
+            1: "redrat",      # Red
+            2: "purplerat",  # Purple (default)
+            3: "bluerat",    # Blue
+        }
+        
+        # Load color-specific rat sprites first (new sprites)
+        color_dir = color_dirs.get(self.player_color, "purplerat")
+        color_path = os.path.join(game_images_dir, color_dir)
+        if os.path.exists(color_path):
+            print(f"Loading {color_dir} sprites from {color_path}")
+            sprites = self.load_sprites_from_dir(color_path)
+            if sprites:
+                self.sprites["color_sprites"] = sprites
+                print(f"  Loaded {len(sprites)} {color_dir} sprites")
+        
+        # Also load legacy sprites as fallback
         sprite_dirs = [
             "sprites_sheet_1",      # 4x4 grid
             "sprites_sheet_1_6x4",  # 6x4 grid  
@@ -74,27 +97,34 @@ class SpriteAnimator:
     
     def organize_animations(self):
         """Organize sprites into animation sequences."""
-        # Use the 4x3 grid (12 sprites total)
-        if "sprites_sheet_1" in self.sprites:
+        # Prefer color-specific sprites (new rat sprites) over legacy sprites
+        if "color_sprites" in self.sprites:
+            sprites = self.sprites["color_sprites"]
+            print(f"Using color-specific sprites (player_color={self.player_color})")
+        elif "sprites_sheet_1" in self.sprites:
             sprites = self.sprites["sprites_sheet_1"]
-            
-            # Organize into animation sequences for 4x3 grid:
-            # Row 0: Idle animation (4 frames)
-            # Row 1: Walking animation (4 frames) 
-            # Row 2: Jumping/Falling animation (4 frames)
-            
-            self.animations = {
-                "idle": [sprites[0]],            # Row 0, first frame only (static)
-                "walking": sprites[4:8],         # Row 1 (sprites 4-7)
-                "jumping": sprites[8:12],        # Row 2 (sprites 8-11)
-                "falling": sprites[8:12],        # Same as jumping
-                "stomping": sprites[8:12],       # Same as jumping for now
-                "dying": sprites[8:12],          # Same as jumping for now
-            }
-            
-            print("Organized animations:")
-            for anim_name, frames in self.animations.items():
-                print(f"  {anim_name}: {len(frames)} frames")
+            print("Using legacy sprites_sheet_1")
+        else:
+            print("Warning: No sprites found!")
+            return
+        
+        # Organize into animation sequences for 4x3 grid (12 sprites total):
+        # Row 0: Idle animation (4 frames) - sprite_0_0 to sprite_0_3
+        # Row 1: Walking animation (4 frames) - sprite_1_0 to sprite_1_3
+        # Row 2: Jumping/Falling animation (4 frames) - sprite_2_0 to sprite_2_3
+        
+        self.animations = {
+            "idle": [sprites[0]],            # Row 0, first frame only (static)
+            "walking": sprites[4:8],         # Row 1 (sprites 4-7)
+            "jumping": sprites[8:12],        # Row 2 (sprites 8-11)
+            "falling": sprites[8:12],        # Same as jumping
+            "stomping": sprites[8:12],       # Same as jumping for now
+            "dying": sprites[8:12],          # Same as jumping for now
+        }
+        
+        print("Organized animations:")
+        for anim_name, frames in self.animations.items():
+            print(f"  {anim_name}: {len(frames)} frames")
     
     def set_animation(self, animation_name, facing_right=True):
         """Set the current animation."""
@@ -156,7 +186,7 @@ def test_sprite_animator():
     screen = pygame.display.set_mode((800, 600))
     clock = pygame.time.Clock()
     
-    animator = SpriteAnimator()
+    animator = SpriteAnimator(player_color=2)  # Default purple
     
     running = True
     current_anim = "idle"

@@ -3773,6 +3773,8 @@ class Game:
             # Update player color if player exists
             if hasattr(self, 'player') and self.player:
                 self.player.player_color = color
+                # Update sprite animator to load correct colored sprites
+                self.player.update_sprite_animator_color()
                 self.player.draw_character()
 
     def draw_difficulty_select(self):
