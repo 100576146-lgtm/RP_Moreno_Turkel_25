@@ -66,10 +66,17 @@ class Game:
         
         # ROS Integration
         self.ros_stats_published = False
+        # Initialize player color (1: Red, 2: Purple, 3: Blue)
+        self.player_color = 2  # Default purple
         if ROS_ENABLED:
             try:
                 rospy.init_node('mario_game_gui', anonymous=True)
                 self.ros_pub_stats = rospy.Publisher('game_over_stats', Int64, queue_size=10)
+                # Read player color from ROS parameter
+                try:
+                    self.player_color = rospy.get_param('change_player_color', 2)
+                except:
+                    pass
                 rospy.loginfo("GUI Game Node Initialized")
             except rospy.ROSException:
                 pass  # Already initialized or ROS not available
@@ -898,6 +905,12 @@ class Game:
                         self.set_difficulty("medium")
                     elif event.key == pygame.K_3:
                         self.set_difficulty("hard")
+                    elif event.key == pygame.K_r:
+                        self.set_player_color(1)  # Red
+                    elif event.key == pygame.K_b:
+                        self.set_player_color(3)  # Blue
+                    elif event.key == pygame.K_p:
+                        self.set_player_color(2)  # Purple
                 elif self.state == GameState.PLAYING:
                     # ESC key to exit level and return to main menu
                     if event.key == pygame.K_ESCAPE:
@@ -1089,7 +1102,7 @@ class Game:
         self.all_sprites.add(blue_star)
         
         # Create player at bottom left
-        self.player = Player(100, 500, self.sound_manager)  # Start on floor
+        self.player = Player(100, 500, self.sound_manager, player_color=self.player_color)  # Start on floor
         self.all_sprites.add(self.player)
         
         # Position camera normally
@@ -1118,7 +1131,7 @@ class Game:
         
         # Restore player position
         player_x, player_y = saved['player_pos']
-        self.player = Player(player_x, player_y, self.sound_manager)
+        self.player = Player(player_x, player_y, self.sound_manager, player_color=self.player_color)
         self.all_sprites.add(self.player)
         
         # Reset camera
@@ -2428,7 +2441,7 @@ class Game:
                 spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
             else:
                 spawn_x, spawn_y = 100, 400
-            self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier)
+            self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier, player_color=self.player_color)
             self.player._game = self  # Give player access to game state
             self.all_sprites.add(self.player)
             self.camera.x = 0
@@ -2463,7 +2476,7 @@ class Game:
             spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
         else:
             spawn_x, spawn_y = 100, 400
-        self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier)
+        self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier, player_color=self.player_color)
         self.all_sprites.add(self.player)
         self.camera.x = 0
         self.camera.y = 0
@@ -2513,7 +2526,7 @@ class Game:
             spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
         else:
             spawn_x, spawn_y = 100, 400
-        self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier)
+        self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier, player_color=self.player_color)
         self.all_sprites.add(self.player)
         self.camera.x = 0
         self.camera.y = 0
@@ -2532,7 +2545,7 @@ class Game:
                     spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
                 else:
                     spawn_x, spawn_y = 100, 400
-                self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier)
+                self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier, player_color=self.player_color)
                 self.player._game = self  # Give player access to game state
                 self.all_sprites.add(self.player)
                 self._needs_initial_load = False
@@ -2808,7 +2821,7 @@ class Game:
                     self.state = GameState.GAME_OVER
                 else:
                     # Respawn at bottom of bonus room
-                    self.player = Player(400, 1100, self.sound_manager)
+                    self.player = Player(400, 1100, self.sound_manager, player_color=self.player_color)
                     self.all_sprites.add(self.player)
                     # Position camera to show player
                     self.camera.y = 1100 - self.screen_height + 100
@@ -2853,7 +2866,7 @@ class Game:
                     spawn_x, spawn_y = self.geometry_dash_spawn_x, self.geometry_dash_spawn_y
                 else:
                     spawn_x, spawn_y = 100, 400
-                self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier)
+                self.player = Player(spawn_x, spawn_y, self.sound_manager, speed_multiplier, jump_multiplier, player_color=self.player_color)
                 self.all_sprites.add(self.player)
                 self.camera.x = 0
                 self.camera.y = 0
@@ -3681,6 +3694,22 @@ class Game:
             self.selected_difficulty = difficulty
             self.start_game()
 
+    def set_player_color(self, color):
+        """Set player color and update ROS parameter."""
+        # color: 1 = Red, 2 = Purple, 3 = Blue
+        if color in [1, 2, 3]:
+            self.player_color = color
+            if ROS_ENABLED:
+                try:
+                    rospy.set_param('change_player_color', color)
+                    rospy.loginfo(f"Player color set to {color}")
+                except:
+                    pass
+            # Update player color if player exists
+            if hasattr(self, 'player') and self.player:
+                self.player.player_color = color
+                self.player.draw_character()
+
     def draw_difficulty_select(self):
         """Draw difficulty selection screen."""
         # Draw background
@@ -3701,16 +3730,62 @@ class Game:
                 pass
         
         if user_name:
-            self.ui.draw_cheese_title(self.screen, f"Hello, {user_name}!", self.screen_width//2, 80, center=True, size=64)
-            self.ui.draw_bubble_text(self.screen, "Select Difficulty:", self.screen_width//2, 160, center=True, size=48)
+            self.ui.draw_cheese_title(self.screen, f"Hello, {user_name}!", self.screen_width//2, 60, center=True, size=64)
+            self.ui.draw_bubble_text(self.screen, "Select Difficulty:", self.screen_width//2, 130, center=True, size=48)
             
             # Buttons
-            y = 240
+            y = 200
             self.ui.draw_cheese_button(self.screen, "1. Easy (Levels 1-3)", self.screen_width//2, y, width=400)
-            self.ui.draw_cheese_button(self.screen, "2. Medium (Levels 4-6)", self.screen_width//2, y + 80, width=400)
-            self.ui.draw_cheese_button(self.screen, "3. Hard (Levels 7-10)", self.screen_width//2, y + 160, width=400)
+            self.ui.draw_cheese_button(self.screen, "2. Medium (Levels 4-6)", self.screen_width//2, y + 70, width=400)
+            self.ui.draw_cheese_button(self.screen, "3. Hard (Levels 7-10)", self.screen_width//2, y + 140, width=400)
             
-            self.ui.draw_bubble_text(self.screen, "Press 1, 2, or 3 to select", self.screen_width//2, y + 260, center=True, size=32)
+            # Color selection
+            color_y = y + 220
+            self.ui.draw_bubble_text(self.screen, "Select Character Color:", self.screen_width//2, color_y, center=True, size=40)
+            
+            # Color buttons
+            color_btn_y = color_y + 50
+            color_btn_width = 200
+            color_spacing = 50
+            
+            # Red button
+            red_selected = "✓ " if self.player_color == 1 else ""
+            self.ui.draw_cheese_button(self.screen, f"{red_selected}R - Red", self.screen_width//2 - color_btn_width - color_spacing, color_btn_y, width=color_btn_width)
+            
+            # Purple button (default)
+            purple_selected = "✓ " if self.player_color == 2 else ""
+            self.ui.draw_cheese_button(self.screen, f"{purple_selected}P - Purple", self.screen_width//2, color_btn_y, width=color_btn_width)
+            
+            # Blue button
+            blue_selected = "✓ " if self.player_color == 3 else ""
+            self.ui.draw_cheese_button(self.screen, f"{blue_selected}B - Blue", self.screen_width//2 + color_btn_width + color_spacing, color_btn_y, width=color_btn_width)
+            
+            # Character preview
+            preview_y = color_btn_y + 100
+            self.ui.draw_bubble_text(self.screen, "Preview:", self.screen_width//2, preview_y, center=True, size=32)
+            
+            # Draw character preview with selected color
+            if not hasattr(self, 'preview_player') or not self.preview_player:
+                from entities import Player
+                # Create preview player at origin (we'll position it manually when drawing)
+                self.preview_player = Player(0, 0, None, 1.0, 1.0, player_color=self.player_color)
+                self.preview_player.sprite_animator.set_animation("idle", True)
+            
+            # Update preview player color if changed
+            if self.preview_player.player_color != self.player_color:
+                self.preview_player.player_color = self.player_color
+                self.preview_player.draw_character()
+            
+            # Update preview animation
+            self.preview_player.sprite_animator.update()
+            self.preview_player.draw_character()
+            
+            # Draw preview character centered
+            preview_sprite = self.preview_player.image
+            preview_rect = preview_sprite.get_rect(center=(self.screen_width//2, preview_y + 100))
+            self.screen.blit(preview_sprite, preview_rect)
+            
+            self.ui.draw_bubble_text(self.screen, "Press 1, 2, or 3 to select difficulty", self.screen_width//2, preview_y + 150, center=True, size=28)
         else:
             self.ui.draw_cheese_title(self.screen, "Welcome!", self.screen_width//2, 100, center=True, size=72)
             self.ui.draw_bubble_text(self.screen, "Please enter your details", self.screen_width//2, 200, center=True, size=48)

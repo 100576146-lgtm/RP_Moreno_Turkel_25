@@ -26,13 +26,14 @@ class Player(pygame.sprite.Sprite):
     The visible sprite can be larger than the collision hitbox for more
     forgiving gameplay. Animation frames are provided by `SpriteAnimator`.
     """
-    def __init__(self, x, y, sound_manager=None, speed_multiplier=1.0, jump_multiplier=1.0):
+    def __init__(self, x, y, sound_manager=None, speed_multiplier=1.0, jump_multiplier=1.0, player_color=2):
         super().__init__()
         
         # Initialize sprite animator
         self.sprite_animator = SpriteAnimator()
         self.speed_multiplier = speed_multiplier
         self.jump_multiplier = jump_multiplier
+        self.player_color = player_color  # 1: Red, 2: Purple, 3: Blue
         
         # Get initial sprite and set up rect
         self.image = self.sprite_animator.get_current_sprite()
@@ -108,6 +109,24 @@ class Player(pygame.sprite.Sprite):
         
         # Get the current sprite
         base_sprite = self.sprite_animator.get_current_sprite()
+        
+        # Apply color filter based on player_color
+        # 1: Red, 2: Purple (default), 3: Blue
+        if self.player_color == 1:  # Red filter
+            # Apply red tint using color multiplication
+            base_sprite = base_sprite.copy()
+            # Create a red overlay and blend it with ADD mode for more visible effect
+            red_overlay = pygame.Surface(base_sprite.get_size(), pygame.SRCALPHA)
+            red_overlay.fill((255, 180, 180, 200))  # Red tint
+            base_sprite.blit(red_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        elif self.player_color == 3:  # Blue filter
+            # Apply blue tint using color multiplication
+            base_sprite = base_sprite.copy()
+            # Create a blue overlay and blend it with ADD mode for more visible effect
+            blue_overlay = pygame.Surface(base_sprite.get_size(), pygame.SRCALPHA)
+            blue_overlay.fill((180, 180, 255, 200))  # Blue tint
+            base_sprite.blit(blue_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        # player_color == 2 (Purple) is the default, no filter needed
         
         # If star is active, add glow effect
         if self.star_active:
