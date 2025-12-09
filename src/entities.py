@@ -191,6 +191,22 @@ class Player(pygame.sprite.Sprite):
         
         keys = pygame.key.get_pressed()
         
+        # Check for ROS keyboard input (if game has ROS enabled)
+        ros_left = False
+        ros_right = False
+        ros_up = False
+        ros_down = False
+        if hasattr(self, '_game') and hasattr(self._game, 'ros_keyboard_state'):
+            ros_left = self._game.ros_keyboard_state.get("LEFT", False)
+            ros_right = self._game.ros_keyboard_state.get("RIGHT", False)
+            ros_up = self._game.ros_keyboard_state.get("UP", False)
+            ros_down = self._game.ros_keyboard_state.get("DOWN", False)
+            # Reset ROS keyboard state after reading (one-time press)
+            self._game.ros_keyboard_state["LEFT"] = False
+            self._game.ros_keyboard_state["RIGHT"] = False
+            self._game.ros_keyboard_state["UP"] = False
+            self._game.ros_keyboard_state["DOWN"] = False
+        
         # Check if underwater mode FIRST
         underwater_mode = False
         if hasattr(self, '_game') and hasattr(self._game, 'underwater_mode'):
@@ -213,18 +229,18 @@ class Player(pygame.sprite.Sprite):
             # Slower movement in water (water resistance)
             swim_speed = current_speed * 0.8
             
-            # Horizontal movement
-            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            # Horizontal movement (pygame keys OR ROS keyboard)
+            if keys[pygame.K_LEFT] or keys[pygame.K_a] or ros_left:
                 self.vel_x = -swim_speed
                 self.facing_right = False
-            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d] or ros_right:
                 self.vel_x = swim_speed
                 self.facing_right = True
             
-            # Vertical movement (UP/DOWN for swimming)
-            if keys[pygame.K_UP] or keys[pygame.K_w]:
+            # Vertical movement (UP/DOWN for swimming) (pygame keys OR ROS keyboard)
+            if keys[pygame.K_UP] or keys[pygame.K_w] or ros_up:
                 self.vel_y = -swim_speed
-            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+            if keys[pygame.K_DOWN] or keys[pygame.K_s] or ros_down:
                 self.vel_y = swim_speed
             
             # Animation state for swimming
@@ -247,18 +263,19 @@ class Player(pygame.sprite.Sprite):
             else:
                 self.animation_state = "idle"
             
-            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            # Horizontal movement (pygame keys OR ROS keyboard)
+            if keys[pygame.K_LEFT] or keys[pygame.K_a] or ros_left:
                 self.vel_x = -current_speed
                 self.facing_right = False
-            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d] or ros_right:
                 self.vel_x = current_speed
                 self.facing_right = True
             
             # Update sprite animator with current state
             self.sprite_animator.set_animation(self.animation_state, self.facing_right)
             
-            # Variable jump height implementation
-            jump_pressed = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]
+            # Variable jump height implementation (pygame keys OR ROS keyboard)
+            jump_pressed = keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w] or ros_up
             
             if jump_pressed and self.on_ground:
                 # Track how long jump button is held

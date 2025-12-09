@@ -5,12 +5,20 @@
         <param name="change_player_color" value="2" />
     </node>
     
-    <!-- GUI Node (The Actual Visual Game) -->
+    <!-- GUI Node (The Actual Visual Game) - Waits for user info and difficulty/color selection -->
     <node pkg="ros_nodes" type="gui_node.py" name="gui_game_node" output="screen" />
-
+    
     <!-- Interactive Nodes -->
-    <!-- Using gnome-terminal to allow user input for info_user -->
-    <node pkg="ros_nodes" type="info_user.py" name="info_user" output="screen" launch-prefix="gnome-terminal --command" />
+    <!-- Option 1: GUI version (beautiful pygame GUI) -->
+    <node pkg="ros_nodes" type="info_user_gui.py" name="info_user" output="screen" />
+    
+    <!-- Option 2: Terminal version (uncomment to use instead of GUI) -->
+    <!--
+    <node pkg="ros_nodes" type="info_user.py" name="info_user" output="screen" launch-prefix="gnome-terminal -e" />
+    -->
+    
+    <!-- Difficulty and Color Select GUI - Shows after user info is collected -->
+    <node pkg="ros_nodes" type="difficulty_select_gui.py" name="difficulty_select_gui" output="screen" />
     
     <!-- Control Node (Text-based) -->
     <!-- Running in separate terminal to capture arrow keys for ROS logic -->

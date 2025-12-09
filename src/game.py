@@ -26,7 +26,7 @@ from smart_level_generator import SmartLevelGenerator
 # ROS Integration
 try:
     import rospy
-    from std_msgs.msg import Int64
+    from std_msgs.msg import Int64, String
     from ros_nodes.srv import SetGameDifficulty
     ROS_ENABLED = True
 except ImportError:
@@ -68,16 +68,22 @@ class Game:
         self.ros_stats_published = False
         # Initialize player color (1: Red, 2: Purple, 3: Blue)
         self.player_color = 2  # Default purple
+        # ROS keyboard input state (for control_node messages)
+        self.ros_keyboard_state = {"LEFT": False, "RIGHT": False, "UP": False, "DOWN": False}
         if ROS_ENABLED:
             try:
                 rospy.init_node('mario_game_gui', anonymous=True)
                 self.ros_pub_stats = rospy.Publisher('game_over_stats', Int64, queue_size=10)
+                # Subscribe to keyboard_control topic for ROS keyboard input (from control_node)
+                self.ros_keyboard_sub = rospy.Subscriber('keyboard_control', String, self.ros_keyboard_callback)
+                # Publish keyboard events to keyboard_control topic (so game_node can track them)
+                self.ros_pub_keyboard = rospy.Publisher('keyboard_control', String, queue_size=10)
                 # Read player color from ROS parameter
                 try:
                     self.player_color = rospy.get_param('change_player_color', 2)
                 except:
                     pass
-                rospy.loginfo("GUI Game Node Initialized")
+                rospy.loginfo("GUI Game Node Initialized with keyboard_control subscriber and publisher")
             except rospy.ROSException:
                 pass  # Already initialized or ROS not available
 
@@ -915,6 +921,22 @@ class Game:
                     # ESC key to exit level and return to main menu
                     if event.key == pygame.K_ESCAPE:
                         self.state = GameState.MENU
+                    # Publish arrow key presses to keyboard_control topic for game_node tracking
+                    elif ROS_ENABLED and event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN):
+                        try:
+                            msg = String()
+                            if event.key == pygame.K_LEFT:
+                                msg.data = "LEFT"
+                            elif event.key == pygame.K_RIGHT:
+                                msg.data = "RIGHT"
+                            elif event.key == pygame.K_UP:
+                                msg.data = "UP"
+                            elif event.key == pygame.K_DOWN:
+                                msg.data = "DOWN"
+                            self.ros_pub_keyboard.publish(msg)
+                            rospy.logdebug(f"Published keyboard event: {msg.data}")
+                        except Exception as e:
+                            rospy.logwarn(f"Error publishing keyboard event: {e}")
                 elif self.state == GameState.GAME_OVER:
                     if event.key == pygame.K_r or event.key == pygame.K_SPACE:
                         self.restart_game()
@@ -2562,13 +2584,35 @@ class Game:
             self.state = GameState.MENU
             return
         
-        # ROS Logic: Check for user_name and transition to difficulty select if needed
+        # ROS Logic: Check if game is ready to start (difficulty and color selected)
         if ROS_ENABLED and self.state == GameState.DIFFICULTY_SELECT:
             try:
-                if rospy.has_param('user_name') and not hasattr(self, 'difficulty_selected'):
-                    # User name is available, difficulty select screen will show options
-                    pass
-            except:
+                # Check if ready_to_start_game is set (by difficulty_select_gui)
+                if rospy.has_param('ready_to_start_game') and rospy.get_param('ready_to_start_game'):
+                    if not hasattr(self, 'difficulty_selected'):
+                        # Read difficulty from ROS parameter
+                        difficulty = rospy.get_param('selected_difficulty', 'easy')
+                        # Read start_level from parameter (set by game_node)
+                        start_level = rospy.get_param('start_level', 0)
+                        self.current_level = start_level
+                        
+                        # Store difficulty and level range
+                        self.selected_difficulty = difficulty
+                        if difficulty == "easy":
+                            self.difficulty_start_level = 0
+                            self.difficulty_end_level = 2
+                        elif difficulty == "medium":
+                            self.difficulty_start_level = 3
+                            self.difficulty_end_level = 5
+                        elif difficulty == "hard":
+                            self.difficulty_start_level = 6
+                            self.difficulty_end_level = 9
+                        
+                        self.difficulty_selected = True
+                        # Start the game
+                        self.start_game()
+            except Exception as e:
+                rospy.logwarn(f"Error checking ROS parameters: {e}")
                 pass
         
         if self.state == GameState.PLAYING:
@@ -2924,7 +2968,12 @@ class Game:
         elif self.state == GameState.LEVEL_SELECT:
             self._draw_level_select()
         elif self.state == GameState.DIFFICULTY_SELECT:
-            self.draw_difficulty_select()
+            # When ROS is enabled, skip the built-in difficulty select screen
+            # The separate difficulty_select_gui.py node handles this
+            if not ROS_ENABLED:
+                self.draw_difficulty_select()
+            # When ROS is enabled, just show a blank screen (the separate GUI handles selection)
+            # The game will start automatically when ready_to_start_game parameter is set
         elif self.state == GameState.VICTORY:
             self._draw_victory()
         pygame.display.flip()
@@ -3694,6 +3743,22 @@ class Game:
             self.selected_difficulty = difficulty
             self.start_game()
 
+    def ros_keyboard_callback(self, msg):
+        """Handle keyboard messages from ROS control_node."""
+        if not ROS_ENABLED:
+            return
+        
+        # Only process keyboard input when game is playing
+        if self.state == GameState.PLAYING:
+            # Update keyboard state based on ROS message
+            direction = msg.data
+            if direction in ["LEFT", "RIGHT", "UP", "DOWN"]:
+                # Set the direction to True (key pressed)
+                self.ros_keyboard_state[direction] = True
+                rospy.logdebug(f"Received ROS keyboard: {direction}")
+        # Note: We don't filter out messages from ourselves because
+        # the control_node and game can both publish, and game_node subscribes to all
+    
     def set_player_color(self, color):
         """Set player color and update ROS parameter."""
         # color: 1 = Red, 2 = Purple, 3 = Blue

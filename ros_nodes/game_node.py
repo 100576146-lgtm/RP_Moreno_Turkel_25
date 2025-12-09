@@ -52,6 +52,7 @@ class GameNode:
                     start_level = 6  # Levels 7-10 (0-indexed: 6, 7, 8, 9)
                 
                 rospy.set_param('start_level', start_level)
+                rospy.set_param('selected_difficulty', self.difficulty)  # Store difficulty name for game
                 rospy.loginfo(f"Difficulty set to {self.difficulty}, Start Level: {start_level + 1}")
                 
                 return SetGameDifficultyResponse(True, f"Difficulty set to {self.difficulty}")
@@ -64,8 +65,11 @@ class GameNode:
         if self.phase == "phase1":
             self.user_name = msg.name
             self.user_age = msg.age
+            # Set user_name parameter IMMEDIATELY so difficulty_select_gui can proceed
             rospy.set_param('user_name', self.user_name)
-            self.welcome_phase(msg)
+            rospy.loginfo(f"GAME_NODE: Set user_name parameter to '{self.user_name}'")
+            # Don't call welcome_phase - let the GUI flow handle it
+            # self.welcome_phase(msg)
             
     def game_stats_cb(self, msg):
         """Callback from GUI game when it finishes."""
