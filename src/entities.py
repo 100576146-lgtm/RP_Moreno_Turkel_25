@@ -890,7 +890,6 @@ class Enemy(pygame.sprite.Sprite):
                 (0, 255, 255),  # Cyan
                 (255, 165, 0),  # Orange
             ]
-            import random
             block_color = random.choice(tetris_colors)
             
             # Draw as a solid tetris block with grid pattern
