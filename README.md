@@ -150,6 +150,41 @@ The level is much larger than the screen and the camera will follow you as you p
 
 This project includes ROS (Robot Operating System) nodes for distributed game control and communication.
 
+### Quick Start - Running the Launcher
+
+**To run the complete ROS game system:**
+
+1. **Make nodes executable** (first time only):
+   ```bash
+   cd ~/RP_Moreno_Turkel_25
+   chmod +x ros_nodes/*.py
+   ```
+
+2. **Start ROS Master** (Terminal 1):
+   ```bash
+   roscore
+   ```
+
+3. **Launch all nodes** (Terminal 2):
+   ```bash
+   # If using catkin workspace:
+   source ~/catkin_ws/devel/setup.bash
+   roslaunch ros_nodes game.launch
+   
+   # OR if running from project directory:
+   cd ~/RP_Moreno_Turkel_25
+   export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH:$(pwd)
+   roslaunch ros_nodes game.launch
+   ```
+
+**What the launcher does:**
+- Launches all 5 required ROS nodes (INFO_USER, GAME_NODE, RESULT_NODE, CONTROL_NODE)
+- Starts GUI nodes for user input and difficulty selection
+- Launches the visual game GUI
+- Sets up all ROS topics, services, and parameters
+
+**Note:** If you haven't built the ROS package yet, see the "Prerequisites for ROS" section below.
+
 ### ROS Architecture
 
 The game is controlled through five ROS nodes that communicate via topics:
@@ -247,19 +282,40 @@ The game is controlled through five ROS nodes that communicate via topics:
 
 ### Running ROS Nodes
 
+> **Quick Start:** See the "Quick Start - Running the Launcher" section above for the fastest way to run the complete system.
+
 #### Option 1: Using ROS Launch (Recommended)
 
-1. **Start ROS Master**:
+This is the easiest way to run the complete ROS game system. The launch file (`ros_nodes/launch/game.launch`) starts all required nodes automatically.
+
+**Steps:**
+
+1. **Start ROS Master** (Terminal 1):
    ```bash
    roscore
    ```
 
-2. **Launch all nodes**:
+2. **Launch all nodes** (Terminal 2):
    ```bash
-   # Launch the complete game
+   # If using catkin workspace (recommended):
+   source ~/catkin_ws/devel/setup.bash
+   roslaunch ros_nodes game.launch
+   
+   # OR if running from project directory:
+   cd ~/RP_Moreno_Turkel_25
+   export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH:$(pwd)
    roslaunch ros_nodes game.launch
    ```
-   Note: `info_user` and `control_node` will open in separate terminals if possible.
+
+**What gets launched:**
+- `result_node` - Displays final game results
+- `game_node` - Main game logic with 3 phases (Welcome, Game, Final)
+- `gui_game_node` - Launches the visual Pygame game
+- `info_user` - Collects user information (GUI version)
+- `difficulty_select_gui` - Difficulty and color selection GUI
+- `control_node` - Keyboard control node (opens in separate terminal if possible)
+
+**Note:** Make sure all Python files are executable: `chmod +x ros_nodes/*.py`
 
 #### Option 2: Running Individual Nodes
 

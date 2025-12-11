@@ -196,11 +196,41 @@ class Player(pygame.sprite.Sprite):
             ros_right = self._game.ros_keyboard_state.get("RIGHT", False)
             ros_up = self._game.ros_keyboard_state.get("UP", False)
             ros_down = self._game.ros_keyboard_state.get("DOWN", False)
+            
+            # Log when ROS input is detected (for debugging)
+            # Only log if ROS is available - check safely
+            if ros_left or ros_right or ros_up or ros_down:
+                # Try to log if ROS is available, but don't crash if it's not
+                try:
+                    import rospy
+                    directions = []
+                    if ros_left: directions.append("LEFT")
+                    if ros_right: directions.append("RIGHT")
+                    if ros_up: directions.append("UP")
+                    if ros_down: directions.append("DOWN")
+                    # Only log occasionally to avoid spam
+                    if hasattr(self, '_last_ros_log_time'):
+                        current_time = rospy.get_time()
+                        if current_time - self._last_ros_log_time > 0.5:  # Log every 0.5 seconds max
+                            rospy.logdebug(f"Player: Using ROS keyboard input: {', '.join(directions)}")
+                            self._last_ros_log_time = current_time
+                    else:
+                        self._last_ros_log_time = rospy.get_time()
+                        rospy.logdebug(f"Player: Using ROS keyboard input: {', '.join(directions)}")
+                except (ImportError, AttributeError, NameError, RuntimeError):
+                    # ROS not available or not initialized, skip logging - this is fine
+                    pass
+            
             # Reset ROS keyboard state after reading (one-time press)
-            self._game.ros_keyboard_state["LEFT"] = False
-            self._game.ros_keyboard_state["RIGHT"] = False
-            self._game.ros_keyboard_state["UP"] = False
-            self._game.ros_keyboard_state["DOWN"] = False
+            # This ensures each key press is processed once per frame
+            if ros_left:
+                self._game.ros_keyboard_state["LEFT"] = False
+            if ros_right:
+                self._game.ros_keyboard_state["RIGHT"] = False
+            if ros_up:
+                self._game.ros_keyboard_state["UP"] = False
+            if ros_down:
+                self._game.ros_keyboard_state["DOWN"] = False
         
         # Check if underwater mode FIRST
         underwater_mode = False

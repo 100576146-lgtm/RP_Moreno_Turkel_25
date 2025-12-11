@@ -8,20 +8,17 @@
     <!-- GUI Node (The Actual Visual Game) - Waits for user info and difficulty/color selection -->
     <node pkg="ros_nodes" type="gui_node.py" name="gui_game_node" output="screen" />
     
-    <!-- Interactive Nodes -->
-    <!-- Option 1: GUI version (beautiful pygame GUI) -->
-    <node pkg="ros_nodes" type="info_user_gui.py" name="info_user" output="screen" />
+    <!-- User Information Input Nodes - Both GUI and Terminal versions available -->
+    <!-- GUI version (beautiful pygame GUI) -->
+    <node pkg="ros_nodes" type="info_user_gui.py" name="info_user_gui" output="screen" />
     
-    <!-- Option 2: Terminal version (uncomment to use instead of GUI) -->
-    <!--
-    <node pkg="ros_nodes" type="info_user.py" name="info_user" output="screen" launch-prefix="gnome-terminal -e" />
-    -->
+    <!-- Terminal version (for terminal input) -->
+    <node pkg="ros_nodes" type="info_user.py" name="info_user_terminal" output="screen" launch-prefix="xterm -e" />
     
     <!-- Difficulty and Color Select GUI - Shows after user info is collected -->
     <node pkg="ros_nodes" type="difficulty_select_gui.py" name="difficulty_select_gui" output="screen" />
     
-    <!-- Control Node (Text-based) -->
-    <!-- Running in separate terminal to capture arrow keys for ROS logic -->
-    <node pkg="ros_nodes" type="control_node.py" name="control_node" output="screen" launch-prefix="gnome-terminal --command" />
+    <!-- Control Node - Pygame version with real-time feedback display -->
+    <node pkg="ros_nodes" type="control_node_pygame.py" name="control_node" output="screen" />
 </launch>
 
