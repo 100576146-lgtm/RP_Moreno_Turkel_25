@@ -107,36 +107,10 @@ class ControlNode:
         input_count = 0
         last_status_time = rospy.get_time()
         last_sent_command = None
-        loop_count = 0
-        
-        # Test stdin connection
-        rospy.loginfo("CONTROL_NODE: Testing stdin connection...")
-        test_key = self.getKey()
-        if test_key == '':
-            rospy.logwarn("CONTROL_NODE: ⚠️  WARNING: Cannot read from stdin!")
-            rospy.logwarn("CONTROL_NODE: This node requires interactive terminal input.")
-            rospy.logwarn("CONTROL_NODE: When launched via roslaunch, stdin may not be connected.")
-            rospy.logwarn("CONTROL_NODE: ")
-            rospy.logwarn("CONTROL_NODE: SOLUTION: Run this node manually in a separate terminal:")
-            rospy.logwarn("CONTROL_NODE:   rosrun ros_nodes control_node.py")
-            rospy.logwarn("CONTROL_NODE: ")
-            rospy.logwarn("CONTROL_NODE: OR use control_node_pygame.py which works with roslaunch.")
-            rospy.logwarn("CONTROL_NODE: ")
-            rospy.logwarn("CONTROL_NODE: Node will continue running but cannot receive keyboard input.")
-            rospy.logwarn("CONTROL_NODE: It can still receive messages from the game via ROS topics.")
         
         while not rospy.is_shutdown():
             key = self.getKey()
             msg = String()
-            loop_count += 1
-            
-            # Show periodic status (every 5 seconds) to prove node is alive
-            current_time = rospy.get_time()
-            if (current_time - last_status_time) >= 5.0:
-                if input_count == 0:
-                    rospy.loginfo(f"CONTROL_NODE: [STATUS] Node is active (loop #{loop_count}), waiting for keyboard input...")
-                    rospy.loginfo(f"CONTROL_NODE: [STATUS] If you see this but no key detection, stdin is not connected.")
-                last_status_time = current_time
             
             if key:
                 input_count += 1
@@ -168,6 +142,13 @@ class ControlNode:
                 self.pub.publish(msg)
                 rospy.loginfo(f"CONTROL_NODE: [SUCCESS] Published '{msg.data}' to GAME_NODE")
                 rospy.loginfo("=" * 70)
+            
+            # Log status every 10 seconds if no input received
+            current_time = rospy.get_time()
+            if input_count == 0 and (current_time - last_status_time) >= 10.0:
+                rospy.logwarn("CONTROL_NODE: Still waiting for keyboard input... (no input received yet)")
+                rospy.logwarn("CONTROL_NODE: Make sure the terminal window is focused and try pressing arrow keys")
+                last_status_time = current_time
         
         rospy.loginfo("CONTROL_NODE: Keyboard input loop exited")
 

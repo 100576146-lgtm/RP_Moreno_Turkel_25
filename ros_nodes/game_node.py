@@ -42,7 +42,54 @@ class GameNode:
         rospy.loginfo("GAME_NODE initialized")
 
     def handle_user_score(self, req):
-        rospy.loginfo(f"GAME_NODE: GetUserScore service called with username: {req.username}")
+        # Get username value - handle different possible field names
+        username_value = None
+        
+        # Log all available attributes for debugging
+        all_attrs = [a for a in dir(req) if not a.startswith('_')]
+        rospy.loginfo(f"GAME_NODE: GetUserScore request object type: {type(req)}, attributes: {all_attrs}")
+        
+        # Try different possible field names
+        if hasattr(req, 'username'):
+            try:
+                username_value = req.username
+                rospy.loginfo(f"GAME_NODE: Found 'username' field: {username_value}")
+            except AttributeError:
+                pass
+        elif hasattr(req, 'name'):
+            try:
+                username_value = req.name
+                rospy.loginfo(f"GAME_NODE: Found 'name' field: {username_value}")
+            except AttributeError:
+                pass
+        
+        # Try to get from __dict__ if available
+        if username_value is None and hasattr(req, '__dict__'):
+            for key, val in req.__dict__.items():
+                if isinstance(val, str):
+                    username_value = val
+                    rospy.logwarn(f"GAME_NODE: Using __dict__ key '{key}' for username: {username_value}")
+                    break
+        
+        # Last resort: try to get the first string attribute
+        if username_value is None:
+            for attr in all_attrs:
+                try:
+                    val = getattr(req, attr)
+                    if isinstance(val, str):
+                        username_value = val
+                        rospy.logwarn(f"GAME_NODE: Using field '{attr}' for username (expected 'username'): {username_value}")
+                        break
+                except:
+                    continue
+        
+        if username_value is None:
+            rospy.logerr("GAME_NODE: Could not find username field in request")
+            rospy.logerr(f"GAME_NODE: Available attributes: {all_attrs}")
+            # Return a default score
+            return GetUserScoreResponse(0)
+        
+        rospy.loginfo(f"GAME_NODE: GetUserScore service called with user name: {username_value}")
         rospy.loginfo(f"GAME_NODE: Current score: {self.score}")
         
         # Calculate percentage of score (assuming max score 1000)
@@ -54,7 +101,88 @@ class GameNode:
         return GetUserScoreResponse(score_as_int64)
 
     def handle_difficulty(self, req):
-        rospy.loginfo(f"GAME_NODE: SetGameDifficulty service called with change_difficulty: {req.change_difficulty}")
+        # Get difficulty value - handle different possible field names
+        difficulty_value = None
+        
+        # First, check if req is already a string (unlikely but possible)
+        if isinstance(req, str):
+            difficulty_value = req
+            rospy.loginfo(f"GAME_NODE: Request is a string: {difficulty_value}")
+        else:
+            # Log all available attributes for debugging
+            all_attrs = [a for a in dir(req) if not a.startswith('_')]
+            rospy.loginfo(f"GAME_NODE: Request object type: {type(req)}, attributes: {all_attrs}")
+            
+            # Try to inspect __dict__ if available
+            try:
+                if hasattr(req, '__dict__'):
+                    rospy.loginfo(f"GAME_NODE: Request __dict__: {req.__dict__}")
+            except:
+                pass
+            
+            # Try different possible field names (ROS might generate different names)
+            # Check for 'difficulty' field first (matches generated code)
+            if hasattr(req, 'difficulty'):
+                try:
+                    difficulty_value = req.difficulty
+                    rospy.loginfo(f"GAME_NODE: Found 'difficulty' field: {difficulty_value}")
+                except AttributeError:
+                    pass
+            elif hasattr(req, 'change_difficulty'):
+                try:
+                    difficulty_value = req.change_difficulty
+                    rospy.loginfo(f"GAME_NODE: Found 'change_difficulty' field: {difficulty_value}")
+                except AttributeError:
+                    pass
+            elif hasattr(req, 'level'):
+                try:
+                    difficulty_value = req.level
+                    rospy.loginfo(f"GAME_NODE: Found 'level' field: {difficulty_value}")
+                except AttributeError:
+                    pass
+            else:
+                # Try to access as if it's a tuple/list (positional argument)
+                try:
+                    if isinstance(req, (tuple, list)) and len(req) > 0:
+                        difficulty_value = req[0]
+                        rospy.loginfo(f"GAME_NODE: Accessed request as sequence: {difficulty_value}")
+                except (TypeError, IndexError):
+                    pass
+                
+                # Try to get from __dict__ if available
+                if difficulty_value is None and hasattr(req, '__dict__'):
+                    for key, val in req.__dict__.items():
+                        if isinstance(val, str) and val in ["easy", "medium", "hard"]:
+                            difficulty_value = val
+                            rospy.logwarn(f"GAME_NODE: Using __dict__ key '{key}' for difficulty: {difficulty_value}")
+                            break
+                
+                # Last resort: try to get the first string attribute
+                if difficulty_value is None:
+                    for attr in all_attrs:
+                        try:
+                            val = getattr(req, attr)
+                            if isinstance(val, str) and val in ["easy", "medium", "hard"]:
+                                difficulty_value = val
+                                rospy.logwarn(f"GAME_NODE: Using field '{attr}' for difficulty (expected 'change_difficulty'): {difficulty_value}")
+                                break
+                        except:
+                            continue
+        
+        if difficulty_value is None:
+            rospy.logerr("GAME_NODE: Could not find difficulty field in request")
+            rospy.logerr(f"GAME_NODE: Request type: {type(req)}")
+            rospy.logerr(f"GAME_NODE: Available attributes: {all_attrs}")
+            # Try to get all attribute values
+            for attr in all_attrs:
+                try:
+                    val = getattr(req, attr)
+                    rospy.logerr(f"GAME_NODE:   {attr} = {val} (type: {type(val)})")
+                except:
+                    pass
+            return SetGameDifficultyResponse(False)
+        
+        rospy.loginfo(f"GAME_NODE: SetGameDifficulty service called with difficulty: {difficulty_value}")
         rospy.loginfo(f"GAME_NODE: Current phase: {self.phase}")
         
         # Only allow difficulty change during phase1 (start screen) as per requirements
@@ -62,9 +190,9 @@ class GameNode:
             rospy.loginfo("GAME_NODE: Current phase is phase1, difficulty change allowed")
             
             # Validate difficulty value
-            if req.change_difficulty in ["easy", "medium", "hard"]:
+            if difficulty_value in ["easy", "medium", "hard"]:
                 old_difficulty = self.difficulty
-                self.difficulty = req.change_difficulty
+                self.difficulty = difficulty_value
                 rospy.loginfo(f"GAME_NODE: Difficulty changed from '{old_difficulty}' to '{self.difficulty}'")
                 
                 # Set start level based on difficulty
@@ -80,13 +208,24 @@ class GameNode:
                 rospy.set_param('selected_difficulty', self.difficulty)  # Store difficulty name for game
                 rospy.loginfo(f"GAME_NODE: Difficulty set to {self.difficulty}, Start Level: {start_level + 1}")
                 
-                return SetGameDifficultyResponse(True, f"Difficulty set to {self.difficulty}")
+                # Return response - handle both old (with message) and new (without message) service definitions
+                try:
+                    return SetGameDifficultyResponse(True, "Difficulty set successfully")
+                except TypeError:
+                    # New service definition without message field
+                    return SetGameDifficultyResponse(True)
             else:
-                rospy.logwarn(f"GAME_NODE: Invalid difficulty level requested: {req.change_difficulty}")
-                return SetGameDifficultyResponse(False, f"Invalid difficulty level. Must be 'easy', 'medium', or 'hard'")
+                rospy.logwarn(f"GAME_NODE: Invalid difficulty level requested: {difficulty_value}")
+                try:
+                    return SetGameDifficultyResponse(False, "Invalid difficulty level")
+                except TypeError:
+                    return SetGameDifficultyResponse(False)
         else:
             rospy.logwarn(f"GAME_NODE: Cannot change difficulty during {self.phase}. Only allowed in phase1.")
-            return SetGameDifficultyResponse(False, f"Cannot change difficulty during {self.phase}. Only allowed in phase1 (start screen).")
+            try:
+                return SetGameDifficultyResponse(False, f"Cannot change difficulty during {self.phase}")
+            except TypeError:
+                return SetGameDifficultyResponse(False)
 
     def user_info_cb(self, msg):
         rospy.loginfo("GAME_NODE: Received user information message")
@@ -99,8 +238,19 @@ class GameNode:
             rospy.loginfo(f"GAME_NODE: Stored user name: '{self.user_name}', age: {self.user_age}")
             
             # Set user_name parameter IMMEDIATELY so difficulty_select_gui can proceed
-            rospy.set_param('user_name', self.user_name)
-            rospy.loginfo(f"GAME_NODE: Set user_name parameter to '{self.user_name}'")
+            # This MUST happen before welcome_phase to ensure difficulty GUI can start
+            try:
+                rospy.set_param('user_name', self.user_name)
+                rospy.loginfo(f"GAME_NODE: ✓✓✓ Set user_name parameter to '{self.user_name}'")
+                # Verify it was set
+                if rospy.has_param('user_name'):
+                    rospy.loginfo(f"GAME_NODE: ✓ Verified user_name parameter exists: {rospy.get_param('user_name')}")
+                else:
+                    rospy.logerr("GAME_NODE: ✗ ERROR: user_name parameter was not set!")
+            except Exception as e:
+                rospy.logerr(f"GAME_NODE: ✗ ERROR setting user_name parameter: {e}")
+                import traceback
+                rospy.logerr(f"GAME_NODE: Traceback: {traceback.format_exc()}")
             
             # Call welcome_phase to print user name as per exercise requirements
             rospy.loginfo("GAME_NODE: Transitioning to Welcome phase method")
@@ -140,12 +290,50 @@ class GameNode:
         rospy.loginfo("GAME_NODE: Welcome phase started.")
         rospy.loginfo(f"GAME_NODE: Displaying welcome message for user: {user_msg.name} ({user_msg.username}), Age: {user_msg.age}")
         
-        print(f"Welcome {user_msg.name} ({user_msg.username})! Age: {user_msg.age}")
+        # Print the name of the user as per requirement: "prints in the screen the name of the user"
+        # This is the WELCOME SCREEN - show it first
+        print(f"\n{'='*50}")
+        print(f"Welcome {user_msg.name}!")
+        print(f"{'='*50}\n")
         
-        rospy.loginfo("GAME_NODE: Waiting 2 seconds before transitioning to Game phase...")
-        rospy.sleep(2)
+        rospy.loginfo("GAME_NODE: Welcome message displayed. Waiting for difficulty GUI to appear...")
+        # Give time for difficulty GUI to initialize and appear
+        rospy.sleep(1.0)
         
-        rospy.loginfo("GAME_NODE: Transitioning from Welcome phase to Game phase")
+        # Wait for difficulty to be selected before transitioning to game phase
+        rospy.loginfo("GAME_NODE: Waiting for difficulty selection before starting game phase...")
+        rospy.loginfo("GAME_NODE: Please select a difficulty in the difficulty selection window")
+        wait_count = 0
+        while not rospy.has_param('difficulty_selected') and not rospy.is_shutdown():
+            rospy.sleep(0.5)
+            wait_count += 1
+            # Log status every 4 seconds (every 8 iterations)
+            if wait_count % 8 == 0:
+                rospy.loginfo("GAME_NODE: Still waiting for difficulty selection... (Please select a difficulty in the GUI)")
+        
+        if rospy.is_shutdown():
+            rospy.loginfo("GAME_NODE: Node shutdown requested while waiting for difficulty selection")
+            return
+        
+        rospy.loginfo("GAME_NODE: ✓ Difficulty selected! Waiting for color selection and game GUI to be ready...")
+        
+        # Wait for game GUI to be ready before transitioning to phase2
+        # This ensures both difficulty AND color are selected
+        rospy.loginfo("GAME_NODE: Waiting for 'ready_to_start_game' parameter...")
+        wait_count = 0
+        while not rospy.has_param('ready_to_start_game') and not rospy.is_shutdown():
+            rospy.sleep(0.5)
+            wait_count += 1
+            if wait_count % 8 == 0:
+                rospy.loginfo("GAME_NODE: Still waiting for game GUI to be ready (difficulty and color must be selected)...")
+        
+        if rospy.is_shutdown():
+            rospy.loginfo("GAME_NODE: Node shutdown requested while waiting for game GUI")
+            return
+        
+        rospy.loginfo("GAME_NODE: ✓ Game GUI is ready! Transitioning from Welcome phase to Game phase")
+        # Small delay to ensure difficulty GUI has closed
+        rospy.sleep(0.5)
         self.game_phase()
 
     def game_phase(self):

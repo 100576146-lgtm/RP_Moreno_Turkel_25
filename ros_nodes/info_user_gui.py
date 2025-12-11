@@ -392,9 +392,27 @@ class InfoUserGUI:
         rospy.loginfo(f"Published user information: Name={name}, Username={username}, Age={age}")
         rospy.loginfo("Waiting for game_node to process user info and set user_name parameter...")
         
-        # Show success message
+        # Show success message (this runs for 2 seconds and then returns)
         self.show_success_message(name, username, age)
+        
+        # Wait a moment for game_node to process the message and set user_name parameter
+        rospy.loginfo("INFO_USER_GUI: Waiting for game_node to process user information...")
+        wait_count = 0
+        while not rospy.has_param('user_name') and wait_count < 20 and not rospy.is_shutdown():
+            rospy.sleep(0.1)
+            wait_count += 1
+        
+        if rospy.has_param('user_name'):
+            rospy.loginfo(f"INFO_USER_GUI: ✓ user_name parameter set: {rospy.get_param('user_name')}")
+        else:
+            rospy.logwarn("INFO_USER_GUI: user_name parameter not set yet, but proceeding anyway...")
+        
+        # Mark as collected - this will cause the main loop to exit
         self.info_collected = True
+        
+        # Close the window after success message is shown
+        rospy.loginfo("INFO_USER_GUI: Closing window and transitioning to difficulty selection...")
+        self.display_active = False
     
     def show_success_message(self, name, username, age):
         """Show a loading/transition screen before closing."""

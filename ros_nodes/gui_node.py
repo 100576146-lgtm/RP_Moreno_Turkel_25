@@ -16,14 +16,27 @@ def run_gui():
         return
     
     rospy.loginfo("GUI_NODE: ✓ User details received. Waiting for difficulty and color selection...")
+    rospy.loginfo("GUI_NODE: The difficulty selection window should appear now.")
+    
     # Wait for difficulty and color to be selected
+    # This ensures we don't start the game until everything is ready
+    wait_count = 0
     while not rospy.has_param('ready_to_start_game') and not rospy.is_shutdown():
         rospy.sleep(0.5)
+        wait_count += 1
+        if wait_count % 8 == 0:
+            rospy.loginfo("GUI_NODE: Still waiting for difficulty and color selection...")
     
     if rospy.is_shutdown():
         return
     
-    rospy.loginfo("GUI_NODE: ✓ Difficulty and color selected! Launching game GUI...")
+    rospy.loginfo("GUI_NODE: ✓ Difficulty and color selected! Waiting for difficulty_select_gui to close...")
+    
+    # Wait longer to ensure difficulty_select_gui window has fully closed
+    # and user can see the transition
+    rospy.sleep(2.0)
+    
+    rospy.loginfo("GUI_NODE: Launching game GUI now...")
     
     # Path to the main game file
     game_path = os.path.expanduser("~/RP_Moreno_Turkel_25/mario_platformer.py")

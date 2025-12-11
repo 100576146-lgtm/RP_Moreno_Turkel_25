@@ -77,22 +77,19 @@ class Game:
                     rospy.init_node('mario_game_gui', anonymous=True)
                 self.ros_pub_stats = rospy.Publisher('game_over_stats', Int64, queue_size=10)
                 # Subscribe to keyboard_control topic for ROS keyboard input (from control_node)
-                self.ros_keyboard_sub = rospy.Subscriber('keyboard_control', String, self.ros_keyboard_callback, queue_size=10)
+                self.ros_keyboard_sub = rospy.Subscriber('keyboard_control', String, self.ros_keyboard_callback)
                 # Publish keyboard events to keyboard_control topic (so game_node can track them)
                 self.ros_pub_keyboard = rospy.Publisher('keyboard_control', String, queue_size=10)
-                # Wait a moment for connections to establish
-                rospy.sleep(0.2)
+                # Wait a moment for connections
+                rospy.sleep(0.1)
                 # Read player color from ROS parameter
                 try:
                     self.player_color = rospy.get_param('change_player_color', 2)
                 except:
                     pass
-                rospy.loginfo("=" * 70)
-                rospy.loginfo("GUI Game Node Initialized with ROS keyboard support")
-                rospy.loginfo(f"GUI Game: ✓ Subscribed to 'keyboard_control' topic (receives from control_node)")
-                rospy.loginfo(f"GUI Game: ✓ Publishing to 'keyboard_control' topic (sends to game_node)")
-                rospy.loginfo(f"GUI Game: ✓ ROS keyboard state initialized: {self.ros_keyboard_state}")
-                rospy.loginfo("=" * 70)
+                rospy.loginfo("GUI Game Node Initialized with keyboard_control subscriber and publisher")
+                rospy.loginfo(f"GUI Game: Subscribed to 'keyboard_control' topic")
+                rospy.loginfo(f"GUI Game: Publishing to 'keyboard_control' topic")
             except rospy.ROSException as e:
                 rospy.logwarn(f"ROS initialization issue (may be normal if already initialized): {e}")
             except Exception as e:
@@ -3759,25 +3756,20 @@ class Game:
         if not ROS_ENABLED:
             return
         
-        try:
-            direction = msg.data
-            rospy.loginfo(f"GUI Game: [ROS INPUT] Received keyboard message: {direction}")
-            
-            # Process keyboard input for all states (but player only uses it when playing)
-            if direction in ["LEFT", "RIGHT", "UP", "DOWN"]:
-                # Set the direction to True (key pressed)
-                # This will be read by player.update() in the next frame
-                self.ros_keyboard_state[direction] = True
-                rospy.loginfo(f"GUI Game: [ROS STATE] Set {direction} = True (will be used by player)")
-                
-                if self.state == GameState.PLAYING:
-                    rospy.loginfo(f"GUI Game: [ACTIVE] Processing ROS keyboard input: {direction} (game is playing - player should move)")
-                else:
-                    rospy.logdebug(f"GUI Game: Received ROS keyboard '{direction}' but game state is {self.state} (will be used when playing)")
+        direction = msg.data
+        rospy.loginfo(f"GUI Game: Received keyboard message from ROS: {direction}")
+        
+        # Process keyboard input for all states (but player only uses it when playing)
+        if direction in ["LEFT", "RIGHT", "UP", "DOWN"]:
+            # Set the direction to True (key pressed)
+            # Keep it True for a few frames so player.update() can read it
+            self.ros_keyboard_state[direction] = True
+            if self.state == GameState.PLAYING:
+                rospy.loginfo(f"GUI Game: Processing ROS keyboard input: {direction} (game is playing)")
             else:
-                rospy.logwarn(f"GUI Game: Received unknown keyboard direction: {direction}")
-        except Exception as e:
-            rospy.logerr(f"GUI Game: Error in ros_keyboard_callback: {e}")
+                rospy.logdebug(f"GUI Game: Received ROS keyboard '{direction}' but game state is {self.state} (will be used when playing)")
+        else:
+            rospy.logwarn(f"GUI Game: Received unknown keyboard direction: {direction}")
         # Note: We don't filter out messages from ourselves because
         # the control_node and game can both publish, and game_node subscribes to all
     
@@ -3885,19 +3877,6 @@ def run_game():
     game = Game()
     running = True
     while running:
-        # Process ROS callbacks if ROS is enabled
-        # rospy.Subscriber automatically processes callbacks in a background thread,
-        # but we ensure ROS is responsive by checking for shutdown
-        # ROS callbacks are processed automatically in background thread
-        # No need to call rospy.spinOnce() - Subscriber handles it
-        if ROS_ENABLED:
-            try:
-                if rospy.is_shutdown():
-                    running = False
-                    break
-            except (AttributeError, NameError):
-                pass  # ROS might not be fully initialized yet
-        
         running = game.handle_events()
         game.update()
         game.draw()

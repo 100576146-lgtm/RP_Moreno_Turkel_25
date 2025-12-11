@@ -1,24 +1,89 @@
 <launch>
-    <!-- Standard ROS Assignment Nodes -->
+    <!-- ============================================================
+         Rat Race - ROS Game Launch File
+         ============================================================
+         This launch file starts all required ROS nodes for the game.
+         
+         Required Nodes (5):
+         1. INFO_USER - Collects player information
+         2. GAME_NODE - Main game logic (3 phases: Welcome, Game, Final)
+         3. RESULT_NODE - Displays final results
+         4. CONTROL_NODE - Keyboard control for player movement
+         5. GUI_NODE - Launches the visual game window
+         
+         Topics:
+         - user_information (ros_nodes/msg/user_msg) - Player info
+         - keyboard_control (std_msgs/String) - Movement commands
+         - result_information (std_msgs/Int64) - Final score
+         
+         Services:
+         - user_score (GetUserScore) - Get score percentage
+         - difficulty (SetGameDifficulty) - Change game difficulty
+         
+         Parameters:
+         - change_player_color (int64) - Player color (1:Red, 2:Purple, 3:Blue)
+         - user_name (string) - User's name (set automatically)
+         - screen_param (string) - Game phase (phase1/phase2/phase3)
+         ============================================================ -->
+    
+    <!-- ============================================================
+         REQUIRED NODE 1: RESULT_NODE
+         Subscribes to: user_information, result_information
+         Calls service: user_score
+         ============================================================ -->
     <node pkg="ros_nodes" type="result_game.py" name="result_node" output="screen"/>
+    
+    <!-- ============================================================
+         REQUIRED NODE 2: GAME_NODE (Main Game Logic)
+         Subscribes to: user_information, keyboard_control, game_over_stats
+         Publishes to: result_information
+         Services: user_score, difficulty
+         Phases: phase1 (Welcome), phase2 (Game), phase3 (Final)
+         ============================================================ -->
     <node pkg="ros_nodes" type="game_node.py" name="game_node" output="screen">
-        <param name="change_player_color" value="2" />
+        <param name="change_player_color" value="2" />  <!-- Default: Purple -->
     </node>
     
-    <!-- GUI Node (The Actual Visual Game) - Waits for user info and difficulty/color selection -->
+    <!-- ============================================================
+         REQUIRED NODE 3: INFO_USER
+         Publishes to: user_information
+         Collects: name, username, age
+         ============================================================ -->
+    <!-- Option 1: GUI version (recommended - user-friendly) -->
+    <node pkg="ros_nodes" type="info_user_gui.py" name="info_user" output="screen" />
+    
+    <!-- Option 2: Terminal version (uncomment to use instead) -->
+    <!--
+    <node pkg="ros_nodes" type="info_user.py" name="info_user" output="screen" launch-prefix="gnome-terminal -e" />
+    -->
+    
+    <!-- ============================================================
+         REQUIRED NODE 4: CONTROL_NODE
+         Publishes to: keyboard_control (values: "UP", "DOWN", "LEFT", "RIGHT")
+         Controls player movement in Phase 2 (Game phase)
+         ============================================================ -->
+    <!-- Option 1: Pygame version (recommended - works reliably with roslaunch, has real-time feedback) -->
+    <node pkg="ros_nodes" type="control_node_pygame.py" name="control_node" output="screen" />
+    
+    <!-- Option 2: Terminal version (uncomment to use instead) -->
+    <!-- Note: Terminal version works best when run manually in a separate terminal: -->
+    <!--   rosrun ros_nodes control_node.py -->
+    <!--
+    <node pkg="ros_nodes" type="control_node.py" name="control_node" output="screen" launch-prefix="gnome-terminal -e" />
+    -->
+    
+    <!-- ============================================================
+         REQUIRED NODE 5: GUI_NODE (Visual Game)
+         Waits for user info and difficulty/color selection
+         Launches the actual Pygame game window
+         ============================================================ -->
     <node pkg="ros_nodes" type="gui_node.py" name="gui_game_node" output="screen" />
     
-    <!-- User Information Input Nodes - Both GUI and Terminal versions available -->
-    <!-- GUI version (beautiful pygame GUI) -->
-    <node pkg="ros_nodes" type="info_user_gui.py" name="info_user_gui" output="screen" />
-    
-    <!-- Terminal version (for terminal input) -->
-    <node pkg="ros_nodes" type="info_user.py" name="info_user_terminal" output="screen" launch-prefix="xterm -e" />
-    
-    <!-- Difficulty and Color Select GUI - Shows after user info is collected -->
+    <!-- ============================================================
+         ADDITIONAL GUI NODES (Enhancement)
+         Difficulty and Color Select GUI - Shows after user info is collected
+         ============================================================ -->
     <node pkg="ros_nodes" type="difficulty_select_gui.py" name="difficulty_select_gui" output="screen" />
     
-    <!-- Control Node - Pygame version with real-time feedback display -->
-    <node pkg="ros_nodes" type="control_node_pygame.py" name="control_node" output="screen" />
 </launch>
 
