@@ -1,4 +1,4 @@
-string difficulty
+string change_difficulty
 ---
 bool success
 string message

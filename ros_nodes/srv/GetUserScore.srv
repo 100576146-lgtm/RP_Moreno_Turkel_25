@@ -1,4 +1,4 @@
-string name
+string username
 ---
-float32 score_percentage
+int64 score
 

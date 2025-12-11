@@ -304,7 +304,8 @@ class DifficultySelectGUI:
         difficulty_name = selected['name'].lower()  # "easy", "medium", "hard"
         
         try:
-            response = self.difficulty_service(difficulty_name)
+            # Service now uses change_difficulty as the request field name
+            response = self.difficulty_service(change_difficulty=difficulty_name)
             if response.success:
                 self.difficulty_set = True
                 rospy.set_param('difficulty_selected', True)
